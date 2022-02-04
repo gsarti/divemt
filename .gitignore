@@ -1,5 +1,11 @@
 # Custom paths
 data/processed/*/*.tsv
+data/raw/ara/*/*
+data/raw/ita/*/*
+data/raw/nld/*/*
+data/raw/tur/*/*
+data/raw/ukr/*/*
+data/raw/vie/*/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
