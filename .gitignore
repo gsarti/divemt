@@ -7,6 +7,9 @@ data/raw/tur/*/*
 data/raw/ukr/*/*
 data/raw/vie/*/*
 
+tmp/*
+outputs/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

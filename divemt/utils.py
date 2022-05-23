@@ -27,6 +27,7 @@ _KEYS_INDICATOR_MAP = {
 
 _METRICS_DF_MAP = [
     "unit_id",
+    "flores_id",
     "item_id",
     "subject_id",
     "task_type",
@@ -66,10 +67,10 @@ _EDITS_DF_MAP = {
     "WdSh": "tot_shifted_words",
     "NumEr": "tot_edits",
     "NumWd": "n_words",
-    "TER": "ter",
+    "TER": "hter",
 }
 
-_EDITS_DF_TYPES = {v: int for v in _EDITS_DF_MAP.values() if v != "ter"}
+_EDITS_DF_TYPES = {v: int for v in _EDITS_DF_MAP.values() if v != "hter"}
 
 
 def time2seconds(input: str) -> float:
@@ -102,8 +103,10 @@ def per2metrics(filename: str) -> Optional[pd.DataFrame]:
     dict_metrics = defaultdict(list)
     for curr_unit in tree.iterfind("unit"):
         curr_unit_id = curr_unit.get("id")
+        flores_id = curr_unit.get("orig_id")
         translation_type = curr_unit.get("type")
         dict_metrics["unit_id"] += [f"{job_id}-{curr_unit_id}"]
+        dict_metrics["flores_id"] += [flores_id]
         dict_metrics["item_id"] += [job_id.rsplit("-", 1)[0] + curr_unit_id]
         dict_metrics["task_type"] += [job_id.rsplit("-", 1)[1]]
         dict_metrics["translation_type"] += [translation_type]
@@ -243,19 +246,19 @@ def texts2edits(
 
 def texts2scores(
     data: Optional[pd.DataFrame] = None,
-    ref_name: Union[str, Sequence[str]] = "mt_text",
-    hyp_name: Union[str, Sequence[str]] = "tgt_text",
+    ref_name: Union[str, Sequence[str]] = "tgt_text",
+    hyp_name: Union[str, Sequence[str]] = "mt_text",
     id_name: Optional[str] = "unit_id",
 ) -> pd.DataFrame:
-    """Compute BLEU, chrF, and TER scores for reference-hypothesis pairs."""
+    """Compute BLEU, and chrF scores for reference-hypothesis pairs."""
     if data is not None:
-        hyp_name = data[hyp_name]
-        ref_name = data[ref_name]
+        hyps = data[hyp_name]
+        refs = data[ref_name]
     metric_vals = defaultdict(list)
     if id_name is not None:
         metric_vals[id_name] = data[id_name]
     for metric, score_func in {"bleu": sentence_bleu, "chrf": sentence_chrf}.items():
-        for h, r in zip(hyp_name, ref_name):
+        for h, r in zip(hyps, refs):
             if h is not None and r is not None:
                 metric_vals[metric] += [round(score_func(h, [r]).score, 2)]
             else:
@@ -263,15 +266,38 @@ def texts2scores(
     return pd.DataFrame(metric_vals)
 
 
+def metrics2extra(
+    metrics_df: pd.DataFrame,
+    unit_id_contains_lang: bool = True,
+    unit_id_contains_doc: bool = True,
+    has_edit_info: bool = False,
+):
+    """Add extra metrics that can be derived from other metrics."""
+    if unit_id_contains_lang:
+        metrics_df["lang_id"] = metrics_df.unit_id.str.split("-").map(lambda x: x[2])
+    if unit_id_contains_doc:
+        metrics_df["doc_id"] = metrics_df.unit_id.str.split("-").map(lambda x: x[3])
+    metrics_df["time_s"] = metrics_df.event_time / 1000
+    metrics_df["time_m"] = metrics_df.time_s / 60
+    metrics_df["time_h"] = metrics_df.time_s / 3600
+    metrics_df["time_per_char"] = metrics_df.time_s / metrics_df.src_len_chr
+    metrics_df["time_per_word"] = metrics_df.time_s / metrics_df.src_len_wrd
+    metrics_df["key_per_char"] = metrics_df.k_total / metrics_df.src_len_chr
+    metrics_df["words_per_hour"] = metrics_df.src_len_wrd / metrics_df.time_h
+    metrics_df["words_per_minute"] = metrics_df.src_len_wrd / metrics_df.time_m
+    return metrics_df
+
+
 def parse_from_folder(
     path: str,
-    ref_name: Union[str, Sequence[str]] = "mt_text",
-    hyp_name: Union[str, Sequence[str]] = "tgt_text",
+    ref_name: Union[str, Sequence[str]] = "tgt_text",
+    hyp_name: Union[str, Sequence[str]] = "mt_text",
     id_name: Optional[str] = "unit_id",
     time_ordered: bool = True,
     output_texts: bool = False,
     add_edit_information: bool = False,
     add_eval_information: bool = False,
+    add_extra_information: bool = False,
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
     """Parse all .per XML files in a folder and return a single dataframe containing all units."""
     metrics_list_dfs = [per2metrics(os.path.join(path, f)) for f in os.listdir(path) if f.endswith(".per")]
@@ -280,7 +306,8 @@ def parse_from_folder(
         texts_list_dfs = [per2texts(os.path.join(path, f)) for f in os.listdir(path) if f.endswith(".per")]
         texts_df = pd.concat([df for df in texts_list_dfs if df is not None], ignore_index=True)
         if add_edit_information:
-            edits_df = texts2edits(texts_df, ref_name, hyp_name, id_name)
+            # Needed for HTER (using human PE as reference)
+            edits_df = texts2edits(texts_df, hyp_name, ref_name, id_name)
             metrics_df = pd.merge(metrics_df, edits_df, how="left", on=id_name)
             texts_df["aligned_edit"] = list(metrics_df["aligned_edit"])
             metrics_df.drop(columns=["aligned_edit", "n_words"], inplace=True)
@@ -290,11 +317,14 @@ def parse_from_folder(
                 metrics_df = pd.merge(metrics_df, scores_df, how="left", on=id_name)
             else:
                 metrics_df = pd.concat([metrics_df, scores_df], axis=1, ignore_index=True)
+        if add_extra_information:
+            metrics_df = metrics2extra(metrics_df, has_edit_info=add_edit_information)
     if time_ordered:
         if output_texts:
             texts_df["time"] = metrics_df["last_modification_time"]
             texts_df = texts_df.sort_values(by=["time", "unit_id"]).drop(columns=["time"])
         metrics_df = metrics_df.sort_values(by=["last_modification_time", "unit_id"])
+        metrics_df["per_subject_visit_order"] = [i for i in range(1, len(metrics_df) + 1)]
     if output_texts:
         return metrics_df, texts_df
     return metrics_df
