@@ -13,8 +13,8 @@ This repository contains data, scripts and notebooks associated to the paper ["D
 @article{sarti-etal-2022-divemt,
     title={{DivEMT}: Neural Machine Translation Post-Editing Effort Across Typologically Diverse Languages},
     author={Sarti, Gabriele and Bisazza, Arianna and Guerberof Arenas, Ana and Toral, Antonio},
-    journal={TBD},
-    url={TBD},
+    journal={ArXiv preprint 2205.12215},
+    url={https://arxiv.org/abs/2205.12215},
     year={2022},
     month={may}
 }
