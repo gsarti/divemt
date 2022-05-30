@@ -74,8 +74,9 @@ main_texts = pd.read_csv('data/processed/merged/full_main_texts.tsv', sep="\t")
 warmup = pd.read_csv('data/processed/merged/full_warmup.tsv', sep="\t")
 warmup_texts = pd.read_csv('data/processed/merged/full_warmup_texts.tsv', sep="\t")
 
-df_main = pd.merge(main, main_texts, how="left", on="unit_id")
-df_warmup = pd.merge(warmup, warmup_texts, how="left", on="unit_id")
+df_main = pd.concat([main, main_texts.iloc[:, 1:]], axis=1)
+# Avoid deduplication, rows are already matching
+df_warmup = pd.concat([warmup, warmup_texts.iloc[:, 1:]], axis=1)
 
 df_main.to_csv("data/main.tsv", sep="\t", index=False)
 df_warmup.to_csv("data/warmup.tsv", sep="\t", index=False)
