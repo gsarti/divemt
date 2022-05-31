@@ -23,7 +23,7 @@ This repository contains data, scripts and notebooks associated to the paper ["D
 
 ## DivEMT Explorer :mag:
 
-The [DivEMT Explorer](https://huggingface.co/spaces/GroNLP/divemt-explorer) is a Streamlit demo hosted on [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/GroNLP/divemt-explorer) allowing for a seamless exploration of the different examples that compose the DivEMT dataset, across modalities and languages. Have a look!
+The [DivEMT Explorer](https://huggingface.co/spaces/GroNLP/divemt_explorer) is a Streamlit demo hosted on [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/GroNLP/divemt_explorer) allowing for a seamless exploration of the different examples that compose the DivEMT dataset, across modalities and languages. Have a look!
 
 ## The DivEMT Dataset
 
