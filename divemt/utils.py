@@ -1,14 +1,17 @@
 import logging
 import os
 import re
+import ctypes
 import shutil
 import subprocess
 import xml.etree.cElementTree as ET
 from collections import defaultdict
-from typing import Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union, List
 
 import pandas as pd
 from sacrebleu import sentence_bleu, sentence_chrf
+
+from .cer import cer
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +199,23 @@ def per2texts(filename: str) -> Optional[pd.DataFrame]:
     return texts_df
 
 
+def texts2cer(
+    ref_sentences: List[str],
+    hyp_sentences: List[str],
+    libed_path: str = "scripts/libED.so",  
+) -> List[float]:
+    # Initialise the connection to C++
+    ed_wrapper = ctypes.CDLL(libed_path)
+    ed_wrapper.wrapper.restype = ctypes.c_float
+    scores = []
+    # Split the hypothesis and reference sentences into word lists
+    for _, (hyp, ref) in enumerate(zip(hyp_sentences, ref_sentences), start=1):
+        ref, hyp = ref.split(), hyp.split()
+        score = cer(hyp, ref, ed_wrapper)
+        scores.append(score)
+    return scores
+
+
 def texts2edits(
     data: Optional[pd.DataFrame] = None,
     ref_name: str = "mt_text",
@@ -207,17 +227,21 @@ def texts2edits(
     prefix = "tmp_tercom_out"
     os.makedirs(tmp_path, exist_ok=True)
     if data is not None:
+        refs, hyps, ids = [], [], []
+        for _, r in data.iterrows():
+            if r[ref_name] is not None and r[ref_name].strip() != "-":
+                assert "pe" in r[id_name]
+                refs += [r[ref_name]]
+            hyps += [r[hyp_name]]
+            ids += [r[id_name]]
         # Prepare files for tercom
         ref_fname = os.path.join(tmp_path, f"{prefix}_ref.txt")
         hyp_fname = os.path.join(tmp_path, f"{prefix}_hyp.txt")
         with open(ref_fname, "w") as rf:
             with open(hyp_fname, "w") as hf:
-                for _, r in data.iterrows():
-                    if r[ref_name] is not None and r[ref_name].strip() != "-":
-                        # Sanity check
-                        assert "pe" in r[id_name]
-                        rf.write(f"{r[ref_name]} ({r[id_name]})\n")
-                        hf.write(f"{r[hyp_name]} ({r[id_name]})\n")
+                for ref, hyp, idx in zip(refs, hyps, ids):
+                    rf.write(f"{ref} ({idx})\n")
+                    hf.write(f"{hyp} ({idx})\n")
     else:
         ref_fname, hyp_fname = ref_name, hyp_name
     out_rootname = os.path.join(tmp_path, prefix)
@@ -240,8 +264,10 @@ def texts2edits(
     shutil.rmtree(tmp_path)
     p = re.compile("REF:.*\nHYP:.*\nEVAL:.*")
     ter_metrics["aligned_edit"] = [x.replace("\n", "\\n") for x in p.findall(aligned_edits)]
-    ter_metrics = ter_metrics.rename(columns={**{"Sent Id": id_name}, **_EDITS_DF_MAP})
-    return ter_metrics.astype(_EDITS_DF_TYPES)
+    ter_metrics = ter_metrics.rename(columns={**{"Sent Id": id_name}, **_EDITS_DF_MAP}).astype(_EDITS_DF_TYPES)
+    # Intentionally swapped to match the expected input of CER
+    ter_metrics["cer"] = texts2cer(hyps, refs)
+    return ter_metrics
 
 
 def texts2scores(
