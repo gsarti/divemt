@@ -232,8 +232,8 @@ def texts2edits(
             if r[ref_name] is not None and r[ref_name].strip() != "-":
                 assert "pe" in r[id_name]
                 refs += [r[ref_name]]
-            hyps += [r[hyp_name]]
-            ids += [r[id_name]]
+                hyps += [r[hyp_name]]
+                ids += [r[id_name]]
         # Prepare files for tercom
         ref_fname = os.path.join(tmp_path, f"{prefix}_ref.txt")
         hyp_fname = os.path.join(tmp_path, f"{prefix}_hyp.txt")
@@ -261,7 +261,7 @@ def texts2edits(
     ter_metrics["Sent Id"] = ter_metrics["Sent Id"].apply(lambda x: x.split(":")[0])
     with open(f"{out_rootname}.pra_more", "r") as f:
         aligned_edits = "\n".join([x.strip() for x in f.readlines()])
-    shutil.rmtree(tmp_path)
+    #shutil.rmtree(tmp_path)
     p = re.compile("REF:.*\nHYP:.*\nEVAL:.*")
     ter_metrics["aligned_edit"] = [x.replace("\n", "\\n") for x in p.findall(aligned_edits)]
     ter_metrics = ter_metrics.rename(columns={**{"Sent Id": id_name}, **_EDITS_DF_MAP}).astype(_EDITS_DF_TYPES)
