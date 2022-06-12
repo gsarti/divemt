@@ -27,7 +27,7 @@ The [DivEMT Explorer](https://huggingface.co/spaces/GroNLP/divemt_explorer) is a
 
 ## The DivEMT Dataset
 
-The processed DivEMT dataset is accessible as a [🤗 Dataset](https://huggingface.co/datasets/GroNLP/divemt) via the GroNLP organization, or alternatively as a two TSV files (one with sentences and one with scores and metrics) in the [data](data/) folder. The raw `.per` files produced by PET are also released in the folder [data/raw](data/raw) to foster more fine-grained exploration of the translation process.
+The processed DivEMT dataset is accessible as a [🤗 Dataset](https://huggingface.co/datasets/GroNLP/divemt) via the GroNLP organization, or alternatively as a two TSV files (one for the main task and one for the warmup) in the [data](data/) folder. The raw `.per` files produced by PET are also released in the folder [data/raw](data/raw) to foster more fine-grained exploration of the translation process. Questionnaires questions and responses can be found in the [data/questionnaires](data/questionnaires) folder.
 
 ### Reproducing the Preprocessing
 
@@ -48,7 +48,7 @@ pip install -e .
 ```bash
 # Run the preprocessing script
 # --output_texts: Output TSV files with sentences (only scores otherwise)
-# --add_edits: Add HTER and edit types breakdown to scores
+# --add_edits: Add HTER, CharacTER and edit types breakdown to scores
 # --add_evals: Add Bleu and ChrF to scores
 # --add_extra: Add extra derived metrics to scores
 # --output_single: Produces individual TSVs for every language-translator pair in the respective language folders
