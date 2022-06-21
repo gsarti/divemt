@@ -1,0 +1,475 @@
+---
+title: "DivEMT: Neural Machine Translation Post-Editing Effort Across Typologically Diverse Languages"
+author: "Antonio Toral"
+date: "Generation date: `r format(Sys.time(), '%b %d, %Y - %H:%M:%S')`"
+output: 
+  html_document:
+    toc: true
+    code_folding: show
+    toc_float: 
+        collapsed: false
+        smooth_scroll: true
+    number_sections: true
+---
+
+
+This document contains the step-by-step statistical analyses of the post-editing (PE) effort experiments described in:
+TBD (2022). DivEMT: Assessing Neural Machine Translation Post-Editing Effort
+across Typologically Diverse Languages.
+
+This is partially based on a previous analysis for the publication:
+Toral, A., Wieling, M., and Way, A. (2018, in press). Post-editing effort of a novel with statistical and neural machine translation. Frontiers in Digital Humanities.
+
+Variables used
+
+- Predictors
+  - Fixed
+    - Length of the source sentence (characters better than words according to the 2018 paper)
+    - task_type: the translation condition. It is a factor with 3 levels: HT (human translation from scratch), PE1 (post-editing the output of Google Translate) and PE2 (post-editing the output of mBART50). The reference level is HT.
+    - trial number
+    - language (6 languages)
+  - Random factors
+    - Subject (18 translators)
+    - Item (nested). Document (107 documents) / Sentence (413 sentences)
+
+- Dependent variables
+  - Translation time in seconds (temporal effort)
+  - number of keystrokes (technical effort)
+  - number of pauses | avg length of pauses | pause to total time ratio (cognitive effort)
+  
+- Hypothesised interactions
+  - trial * task_type: does the longitudinal effect depend on translation type?
+  - lang_id * task_type: does the effect of translation type vary per language?
+  - len_sl_char * task_type: does translation speed of sentences of different length depend on translation type? Some translators said post-editing is useful only for short sentences. In the 2018 paper post-editing of NMT (RNN) was less effective for long sentences.
+
+- Hypothesised random slopes
+  - 1+trial|subject -> longitudinal effect depends on the subject
+  - 1+task_type|subject -> effect of translation mode depends on subject. MT suggestions may help some translators more than others.
+  - 1+task_type|item -> effect of translation mode depends on sentence. MT quality varies across sentences.
+
+# Load libraries and install required packages if not installed yet
+```{r message=FALSE}
+# install packages if not there yet
+packages <- c("car", "effects", "ggplot2", "jtools", "lme4", "lmerTest", "mgcv", "optimx", "tidyr")
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+    install.packages(setdiff(packages, rownames(installed.packages())), repos = "http://cran.us.r-project.org")
+}
+
+library(car)
+library(effects)
+library(ggplot2)
+library(jtools)
+library(lme4)
+library(mgcv)
+library(optimx)
+library(interactions)
+```
+
+```{r versioninfo}
+# display version information
+R.version.string
+packageVersion('mgcv')
+packageVersion('car')
+packageVersion('lme4')
+packageVersion('mgcv')
+packageVersion('optimx')
+```
+
+# Load dataset
+```{r}
+setwd("~/projects/divemt/data/processed")
+# Save the filtered_data variable produced in the analysis.ipynb notebook to load it here.
+mydf <- read.csv("filtered_divemt.tsv", sep="\t")
+# 7434 rows (18 translators * 413 sentences)
+# Outliers have been already removed from this dataset (17 sentences for all languages)
+# create additional variables (trial number, time and number of keystrokes per character, seconds per keystrokes and words per hour)
+mydf$trial <- mydf$per_subject_visit_order
+
+mydf$time <- mydf$event_time / 1000 # time from ms to seconds
+mydf$time_h = mydf$time / 3600 # time from seconds to hours
+
+mydf$time_div_sl_len_char = mydf$time / mydf$src_len_chr # time per character
+mydf$k_total_div_sl_len_char = mydf$k_total / mydf$src_len_chr # keystrokes per character
+mydf$k_total_div_time = mydf$k_total / mydf$time # keystrokes per second
+mydf$sl_len_word_div_time_hours = mydf$src_len_wrd / (mydf$time_h) # words per hour
+
+# scale the continuous predictors
+mydf$src_len_chr.s <- scale(mydf$src_len_chr)
+mydf$src_len_chr.s = c(mydf$src_len_chr.s)
+mydf$trial.s <- scale(mydf$trial)
+mydf$trial.s = c(mydf$trial.s)
+
+# relevel predictor language. Use as reference the slowest one (Ukrainian)
+mydf$lang_id <- as.factor(mydf$lang_id)
+mydf$lang_id <- relevel(mydf$lang_id, "ukr")
+
+# document_id as a factor, since it'll be used as a random factor
+mydf$document_id <- as.factor(mydf$doc_id)
+```
+
+# Overall Relative Changes (PE with MT1 and MT2 compared to HT)
+
+Productivity (words processed per hour)
+
+```{r}
+product_per_task_type <- tapply(mydf$src_len_wrd, mydf$task_type, FUN=sum) / tapply(mydf$time/3600, mydf$task_type, FUN=sum) #productivity: words/hour
+product_per_task_type
+for (i in seq(2,3)){
+  print((product_per_task_type[i] - product_per_task_type[1]) / product_per_task_type[1])
+}
+```
+
+Relative changes in productivity: MT1 62%, MT2 30% (in IT: MT1 101%, MT2 74%)
+
+Temporal effort (seconds per source character)
+
+```{r}
+temp_eff_per_task_type <- tapply(mydf$time, mydf$task_type, FUN=sum) / tapply(mydf$src_len_chr, mydf$task_type, FUN=sum) # temp effort: seconds/character
+temp_eff_per_task_type
+for (i in seq(2,3)){
+  print((temp_eff_per_task_type[i] - temp_eff_per_task_type[1]) / temp_eff_per_task_type[1])
+}
+```
+
+Temporal reduction: MT1 -38%, MT2 -23% (in IT: MT1 -51%, MT2 -43%)
+
+Technical effort (keystrokes per source character)
+
+```{r}
+tech_eff_per_task_type <- tapply(mydf$k_total, mydf$task_type, FUN=sum) / tapply(mydf$src_len_chr, mydf$task_type, FUN=sum) # technical effort: keystrokes/character
+tech_eff_per_task_type
+for (i in seq(2,3)){
+  print((tech_eff_per_task_type[i] - tech_eff_per_task_type[1]) / tech_eff_per_task_type[1])
+}
+```
+
+Keystroke reduction: MT1 -55%, MT2 -39% (in IT MT1 -77%, MT2 -70%)
+
+Typing speed (keystrokes per second)
+
+```{r}
+type_speed_per_task_type <- tapply(mydf$k_total, mydf$task_type, FUN=sum) / tapply(mydf$time, mydf$task_type, FUN=sum) # keystrokes/second
+type_speed_per_task_type
+for (i in seq(2,3)){
+  print((type_speed_per_task_type[i] - type_speed_per_task_type[1]) / type_speed_per_task_type[1])
+}
+```
+
+MT1 -27%, MT2 -21% (in IT MT1 -55%, MT2 -48%)
+
+# Temporal Effort
+
+## Outliers
+
+```{r}
+# 1 boxplot per subject and task
+par(mfrow=c(1,2), family  = "Arial")
+boxplot(mydf$time ~ mydf$subject_id + mydf$task_type)
+boxplot(mydf$time_div_sl_len_char ~ mydf$subject_id + mydf$task_type)#, ylim=c(0, 40))
+
+# 1 boxplot per task and subject
+par(mfrow=c(1,2), family  = "Arial")
+boxplot(mydf$time ~ mydf$task_type + mydf$subject_id)
+boxplot(mydf$time_div_sl_len_char ~ mydf$task_type + mydf$subject_id)#, ylim=c(0, 40))
+
+# 1 boxplot per subject
+par(mfrow=c(1,2), family  = "Arial")
+boxplot(mydf$time ~ mydf$subject_id)
+boxplot(mydf$time_div_sl_len_char ~ mydf$subject_id)#, ylim=c(0, 40))
+
+# 1 boxplot per task
+par(mfrow=c(1,2), family  = "Arial")
+boxplot(mydf$time ~ mydf$task_type)
+boxplot(mydf$time_div_sl_len_char ~ mydf$task_type)#, ylim=c(0, 40))
+```
+
+No clear outliers, e.g. sentences for which translators take more than 6 seconds per source character. Outliers have been already removed, based on edit time > 45 min
+
+## Dependent Variable Transformation
+
+The dependent variable (translation time) has a very long right tail. Hence we transform it logarithmically.
+
+```{r}
+mydf$time.l <- log(mydf$time)
+par(mfrow=c(1,2), family  = "Arial")
+plot(density(mydf$time))
+plot(density(mydf$time.l))
+```
+
+## LMER: Nested Random Effect
+
+```{r}
+te.lmer0 = lmer(time.l ~ src_len_chr.s + (1|subject_id) + (1|item_id), mydf, REML=T)
+summary(te.lmer0)
+
+te.lmer0b = lmer(time.l ~ src_len_chr.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=T)
+summary(te.lmer0b)
+AIC(te.lmer0) - AIC(te.lmer0b) # 46.5 (nested random effect makes sense)
+```
+
+## LMER: Fixed Effects
+
+```{r}
+te.lmer0b = lmer(time.l ~ src_len_chr.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+
+te.lmer1 = lmer(time.l ~ src_len_chr.s + task_type + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+AIC(te.lmer0) - AIC(te.lmer1) # 1123 (>2 -> better model)
+summary(te.lmer1) # pe1 & pe2 significantly faster than ht (|t|>2 for task_type)
+
+te.lmer2 = lmer(time.l ~ src_len_chr.s + task_type + lang_id + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+AIC(te.lmer1) - AIC(te.lmer2) # 4 (>2 -> better model)
+summary(te.lmer2) # ara, nld & tur significantly faster than ara. ita and vie are not.
+
+te.lmer3 = lmer(time.l ~ src_len_chr.s + task_type + lang_id + trial.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+AIC(te.lmer2) - AIC(te.lmer3) # -1.44 (<2 -> not better model)
+summary(te.lmer3) # not enough evidence for a longitudinal effect: translators do not get significantly faster (|t|<2 for trial)
+```
+
+## LMER: Interactions of Fixed Effects
+
+```{r}
+te.lmer4a = lmer(time.l ~ src_len_chr.s + lang_id + task_type * trial.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+summary(te.lmer4a)
+AIC(te.lmer3) - AIC(te.lmer4a) #14. Translators get faster in PE, but slower in HT!
+
+iplot_te_task_trial <- interact_plot(te.lmer4a, pred = trial.s, modx = task_type)
+iplot_te_task_trial + theme(axis.title = element_text(family = "Arial"),
+           legend.text = element_text(family = "Arial"),
+           legend.title = element_text(family = "Arial"),
+           strip.text = element_text(family = "Arial"),
+           axis.text.x = element_text(family = "Arial"),
+           axis.text.y = element_text(family = "Arial"))
+```
+
+The model with the interaction between task_type and trial number is better. The interaction is significant.
+
+Figure: Translators get faster in PE, but slower in HT
+
+```{r}
+te.lmer4b = lmer(time.l ~ src_len_chr.s + lang_id * task_type + trial.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+summary(te.lmer4b)
+AIC(te.lmer3) - AIC(te.lmer4b) # 164. PE is not equally useful in all languages
+
+iplot_te_task_trial <- cat_plot(te.lmer4b, pred = lang_id, modx = task_type)
+iplot_te_task_trial + theme(axis.title = element_text(family = "Arial"),
+           legend.text = element_text(family = "Arial"),
+           legend.title = element_text(family = "Arial"),
+           strip.text = element_text(family = "Arial"),
+           axis.text.x = element_text(family = "Arial"),
+           axis.text.y = element_text(family = "Arial"))
+```
+
+The interaction between tasktype and lang_id leads to a better model.
+
+```{r}
+te.lmer4c = lmer(time.l ~ task_type * `src_len_chr.s` + trial.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+summary(te.lmer4c)
+AIC(te.lmer3) - AIC(te.lmer4c) #-7
+
+iplot_te_len_task <- interact_plot(te.lmer4c, pred = src_len_chr.s, modx = task_type, y.label = "time (log)", x.label = "character source length (scaled)", legend.main = "condition")
+iplot_te_len_task + theme(axis.title = element_text(family = "Arial"),
+           legend.text = element_text(family = "Arial"),
+           legend.title = element_text(family = "Arial"),
+           strip.text = element_text(family = "Arial"),
+           axis.text.x = element_text(family = "Arial"),
+           axis.text.y = element_text(family = "Arial"))
+```
+
+The model with the interaction between task_type and length is worse. The interaction is not significant.
+
+Figure: no difference for different lengths of sentences.
+
+```{r}
+te.lmer4d = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=F)
+summary(te.lmer4d)
+AIC(te.lmer4b) - AIC(te.lmer4d) # 10.7
+AIC(te.lmer4a) - AIC(te.lmer4d) # 161
+
+iplot_te_task_trial <- cat_plot(te.lmer4b, pred = lang_id, modx = task_type)
+iplot_te_task_trial + theme(axis.title = element_text(family = "Arial"),
+           legend.text = element_text(family = "Arial"),
+           legend.title = element_text(family = "Arial"),
+           strip.text = element_text(family = "Arial"),
+           axis.text.x = element_text(family = "Arial"),
+           axis.text.y = element_text(family = "Arial"))
+```
+
+Both significant interactions lead to a better model than either on its own.
+
+## LMER: Random Effects
+
+```{r}
+ranef(te.lmer4d)$subject_id
+```
+
+We can observe that the adjustments for specific subjects to the intercept are slightly different, positive for e.g. ara_T1 and ita_T1 and negative for e.g. ita_T5.
+
+Now we check whether the addition of random slopes for subject results in a better model.
+
+```{r}
+te.lmer4dREML = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (1|document_id/item_id), mydf, REML=T) # We build the previous best model with REML=T so that it can be compared to models with random slopes
+
+#subject
+te.lmer5a = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (0+trial.s|subject_id) + (1|document_id/item_id), mydf, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb')))
+AIC(te.lmer4dREML) - AIC(te.lmer5a) #182
+
+te.lmer5b = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (1+trial.s|subject_id) + (1|document_id/item_id), mydf, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb')))  # TODO does not converge
+
+te.lmer5c = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (1+task_type|subject_id) + (1|document_id/item_id), mydf, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb'))) # TODO does not converge
+```
+
+Slope 0+trial.s for subject improves the model.
+
+
+Now we check whether the addition of random slopes for item results in a better model.
+
+```{r}
+te.lmer6a = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (0+trial.s|subject_id) + (1|document_id/item_id) + (0+trial.s|document_id/item_id), mydf, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb')))
+  
+AIC(te.lmer5a) - AIC(te.lmer6a) #10
+
+
+te.lmer6b = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (0+trial.s|subject_id) + (1|document_id/item_id) + (0+task_type|document_id/item_id), mydf, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb'))) # takes very long
+AIC(te.lmer5a) - AIC(te.lmer6b) #91
+
+te.lmer6c = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (0+trial.s|subject_id) + (1+task_type|document_id/item_id), mydf, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb'))) # takes very long
+AIC(te.lmer6b) - AIC(te.lmer6c) #-78
+
+summary(te.lmer6b) # the best model thus far
+```
+
+## LMER Assumptions
+
+```{r}
+# heterodasticity
+par(mfrow=c(1,1), family  = "Arial")
+plot(fitted(te.lmer6b), resid(te.lmer6b)) # OK
+
+# normality
+par(mfrow=c(1,1), family  = "Arial")
+qqp(resid(te.lmer6b)) # not OK
+```
+
+Heterodasticity looks fine but the distribution of residuals deviates from normality.
+
+## Model criticism
+
+```{r}
+# Remove outliers
+mydfno = mydf[abs(scale(resid(te.lmer6b))) < 2.5,]
+dim(mydfno) - dim(mydf)
+1 - (dim(mydfno)/dim(mydf))# 2.4% of the data points are removed
+
+# Fit model on data without outliers
+library(lmerTest)
+
+te.lmer6bno = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (0+trial.s|subject_id) + (1|document_id/item_id) + (0+task_type|document_id/item_id), mydfno, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb')))
+
+# Check normality
+par(mfrow=c(1,2), family="Arial")
+qqp(resid(te.lmer6b))
+qqp(resid(te.lmer6bno)) # Normality looks fine in the model without outliers.
+
+summary(te.lmer6b)
+summary(te.lmer6bno)
+```
+
+Most of the predictors and interactions that were significant remain so in the model without outliers.
+
+trial is not significant (neither on its own nor in an interaction). Therefore we remove it and check if the simpler resulting model is not significantly worse in terms of AIC.
+
+```{r}
+te.lmer7bno = lmer(time.l ~ src_len_chr.s + lang_id * task_type + (1|subject_id) + (1|document_id/item_id) + (0+task_type|document_id/item_id), mydfno, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb')))
+
+AIC(te.lmer6bno) - AIC(te.lmer7bno) # -134
+summary(te.lmer7bno)
+```
+
+```{r}
+ranef(te.lmer7bno)$subject_id
+```
+
+## Variance Explained and Significance
+
+Percentage of variance explained by the models with and without outliers
+```{r}
+cor(mydf$time.l, fitted(te.lmer6b))^2 # 0.56
+cor(mydfno$time.l, fitted(te.lmer6bno))^2 # 0.63
+cor(mydfno$time.l, fitted(te.lmer7bno))^2 # 0.62
+```
+
+Use PE1 as reference level of translation condition, to check if PE2 is significantly different than PE1. So far HT was the reference so we only compared HT-PE1 and HT-PE2
+
+```{r}
+mydfno$task_type <- as.factor(mydfno$task_type)
+mydfno$task_type <- relevel(mydfno$task_type, "pe1")
+te.lmer6bno_pe1 = lmer(time.l ~ src_len_chr.s + lang_id * task_type + task_type * trial.s + (1|subject_id) + (0+trial.s|subject_id) + (1|document_id/item_id) + (0+task_type|document_id/item_id), mydfno, REML=T,
+                 control = lmerControl(
+                           optimizer ='optimx', optCtrl=list(method='nlminb')))
+
+mydfno$task_type <- relevel(mydfno$task_type, "ht")
+```
+
+To conclude with temporal effort, we report the time in each condition according to the model without outliers and their relative differences.
+
+```{r}
+# UKR (reference level)
+exp(4.92022)          #HT:  137 seconds
+exp(4.92022 - 0.49480)  #PE1: 83.5
+exp(4.92022 - 0.22159)  #PE2: 109.8
+
+# ITA
+exp(4.92022-0.552)   #HT:  78.9 seconds
+exp(4.92022 - 0.49480 - 0.39861)  #PE1: 56.1
+exp(4.92022 - 0.22159 - 0.38659)  #PE2: 74.6
+```
+
+## Noise from Subjects vs Languages
+
+Compare the magnitude of noise introduced by different subjects and the differences between languages
+
+With random effects, the model adding language as a nested random intercept is not better.
+
+```{r}
+te.lmer_subj = lmer(time.l ~ src_len_chr.s + task_type + (1|subject_id) + (1|document_id/item_id), mydfno, REML=T)
+summary(te.lmer_subj)
+
+te.lmer_subj_lang = lmer(time.l ~ src_len_chr.s + task_type + (1|lang_id/subject_id) + (1|document_id/item_id), mydfno, REML=T)
+
+AIC(te.lmer_subj) - AIC(te.lmer_subj_lang) # equivalent -> language as nested random effect not relevant!
+
+cor(mydfno$time.l, fitted(te.lmer_subj))^2
+cor(mydfno$time.l, fitted(te.lmer_subj_lang))^2 # same amount of variance explained
+```
+
+With fixed effects, subject_id is a more important predictor than language_id.
+
+```{r}
+te.lmer_basef = lmer(time.l ~ src_len_chr.s + task_type + (1|document_id/item_id), mydfno, REML=T)
+te.lmer_subjf = lmer(time.l ~ src_len_chr.s + task_type + subject_id + (1|document_id/item_id), mydfno, REML=T)
+summary(te.lmer_subjf)
+te.lmer_langf = lmer(time.l ~ src_len_chr.s + task_type + lang_id + (1|document_id/item_id), mydfno, REML=T)
+summary(te.lmer_langf)
+
+AIC(te.lmer_basef) - AIC(te.lmer_subjf) #2737
+AIC(te.lmer_basef) - AIC(te.lmer_langf) #1296
+
+cor(mydfno$time.l, fitted(te.lmer_subjf))^2 #0.59
+cor(mydfno$time.l, fitted(te.lmer_langf))^2 #0.49
+```
