@@ -86,13 +86,9 @@ df_warmup.to_csv("data/warmup.tsv", sep="\t", index=False)
 
 Follow along the [analysis](notebooks/analysis.ipynb) notebook after running the preprocessing script to produce plots and tables.
 
-## Next steps
+### Reproducing the Statistical Modeling
 
-- [ ] Exhaustive data card for the DivEMT dataset
-
-- [ ] Comments in source code for the DivEMT preprocessing methods
-
-- [ ] Modeling notebook
+Follow along the [modeling](notebooks/modeling.Rmd) notebook (or open its [knitted HTML report](reports/modeling.html) in the browser) to inspect the results from the modeling analysis.
 
 
 ## Dataset Curators
