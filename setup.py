@@ -16,6 +16,7 @@ setup(
         "pandas",
         "sacrebleu",
         "Levenshtein",
+        "stanza",
         "black",
         "flake8",
         "isort",

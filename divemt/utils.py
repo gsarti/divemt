@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import codecs
 import ctypes
 import shutil
 import subprocess
@@ -9,6 +10,7 @@ from collections import defaultdict
 from typing import Optional, Sequence, Tuple, Union, List
 
 import pandas as pd
+import stanza
 from sacrebleu import sentence_bleu, sentence_chrf
 
 from .cer import cer
@@ -74,6 +76,22 @@ _EDITS_DF_MAP = {
 }
 
 _EDITS_DF_TYPES = {v: int for v in _EDITS_DF_MAP.values() if v != "hter"}
+
+_STANZA_NLP_MAP = {
+    "ara": stanza.Pipeline(lang="ar", processors="tokenize"),
+    "nld": stanza.Pipeline(lang="nl", processors="tokenize"),
+    "ita": stanza.Pipeline(lang="it", processors="tokenize"),
+    "tur": stanza.Pipeline(lang="tr", processors="tokenize"),
+    "ukr": stanza.Pipeline(lang="uk", processors="tokenize"),
+    "vie": stanza.Pipeline(lang="vi", processors="tokenize"),
+}
+
+
+def tokenize(sent: str, lang: str):
+    nlp = _STANZA_NLP_MAP.get(lang, None)
+    if nlp is None:
+        return sent
+    return " ".join([token.text for s in nlp(sent).sentences for token in s.tokens])
 
 
 def time2seconds(input: str) -> float:
@@ -222,26 +240,31 @@ def texts2edits(
     hyp_name: str = "tgt_text",
     id_name: str = "unit_id",
     tercom_path: str = "scripts/tercom.7.25.jar",
+    unit_id_contains_lang: bool = True,
 ) -> pd.DataFrame:
     tmp_path = "tmp"
     prefix = "tmp_tercom_out"
     os.makedirs(tmp_path, exist_ok=True)
     if data is not None:
+        if unit_id_contains_lang:
+            data["lang_id"] = data.unit_id.str.split("-").map(lambda x: x[2])
         refs, hyps, ids = [], [], []
         for _, r in data.iterrows():
             if r[ref_name] is not None and r[ref_name].strip() != "-":
                 assert "pe" in r[id_name]
-                refs += [r[ref_name]]
-                hyps += [r[hyp_name]]
+                refs += [tokenize(r[ref_name], r["lang_id"])] if "lang_id" in r else [r[ref_name]]
+                hyps += [tokenize(r[hyp_name], r["lang_id"])] if "lang_id" in r else [r[hyp_name]]
                 ids += [r[id_name]]
         # Prepare files for tercom
         ref_fname = os.path.join(tmp_path, f"{prefix}_ref.txt")
         hyp_fname = os.path.join(tmp_path, f"{prefix}_hyp.txt")
-        with open(ref_fname, "w") as rf:
-            with open(hyp_fname, "w") as hf:
+        with codecs.open(ref_fname, "w") as rf:
+            with codecs.open(hyp_fname, "w") as hf:
                 for ref, hyp, idx in zip(refs, hyps, ids):
-                    rf.write(f"{ref} ({idx})\n")
-                    hf.write(f"{hyp} ({idx})\n")
+                    ref = ref.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"','\\"')
+                    hyp = hyp.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"','\\"')
+                    rf.write(f"{ref}\t({idx})\n")
+                    hf.write(f"{hyp}\t({idx})\n")
     else:
         ref_fname, hyp_fname = ref_name, hyp_name
     out_rootname = os.path.join(tmp_path, prefix)
@@ -296,7 +319,6 @@ def metrics2extra(
     metrics_df: pd.DataFrame,
     unit_id_contains_lang: bool = True,
     unit_id_contains_doc: bool = True,
-    has_edit_info: bool = False,
 ):
     """Add extra metrics that can be derived from other metrics."""
     if unit_id_contains_lang:
@@ -345,7 +367,7 @@ def parse_from_folder(
             else:
                 metrics_df = pd.concat([metrics_df, scores_df], axis=1, ignore_index=True)
         if add_extra_information:
-            metrics_df = metrics2extra(metrics_df, has_edit_info=add_edit_information)
+            metrics_df = metrics2extra(metrics_df)
     if time_ordered:
         if output_texts:
             texts_df["time"] = metrics_df["last_modification_time"]
