@@ -90,6 +90,8 @@ df_main.to_csv("data/main.tsv", sep="\t", index=False)
 df_warmup.to_csv("data/warmup.tsv", sep="\t", index=False)
 ```
 
+These final files correspond to the two TSV files released in the [data](data/) folder, which are also used for the processed version of Divemt on [🤗 Datasets](https://huggingface.co/datasets/GroNLP/divemt) and for the [DivEMT Explorer](https://huggingface.co/spaces/GroNLP/divemt_explorer).
+
 ### Reproducing the Analysis and Plots
 
 Follow along the [analysis](notebooks/analysis.ipynb) notebook after running the preprocessing script to produce plots and tables.

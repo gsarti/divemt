@@ -13,17 +13,9 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-# from math import sqrt #needed for aditional statistics
-import os
-import sys
 import ctypes
-import argparse
 import itertools
 import Levenshtein
-try:
-    from itertools import izip as zip
-except ImportError:
-    pass
 
 
 """

@@ -28,7 +28,7 @@ _KEYS_INDICATOR_MAP = {
     "k_do": "indicator[@id='do-keys']",
 }
 
-_METRICS_DF_MAP = [
+_METRICS_DF_FIELDS = [
     "unit_id",
     "flores_id",
     "item_id",
@@ -176,7 +176,7 @@ def per2metrics(filename: str) -> Optional[pd.DataFrame]:
                 f"{float(event_time)} ({rel_diff:.2%} diff, {dict_metrics['num_annotations'][idx]} annotations)"
             )
     metrics_df = pd.DataFrame(dict_metrics)
-    return metrics_df[_METRICS_DF_MAP]
+    return metrics_df[_METRICS_DF_FIELDS]
 
 
 def per2texts(filename: str) -> Optional[pd.DataFrame]:
@@ -324,6 +324,7 @@ def parse_from_folder(
     add_edit_information: bool = False,
     add_eval_information: bool = False,
     add_extra_information: bool = False,
+    rounding: Optional[int] = None,
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
     """Parse all .per XML files in a folder and return a single dataframe containing all units."""
     metrics_list_dfs = [per2metrics(os.path.join(path, f)) for f in os.listdir(path) if f.endswith(".per")]
@@ -351,6 +352,9 @@ def parse_from_folder(
             texts_df = texts_df.sort_values(by=["time", "unit_id"]).drop(columns=["time"])
         metrics_df = metrics_df.sort_values(by=["last_modification_time", "unit_id"])
         metrics_df["per_subject_visit_order"] = [i for i in range(1, len(metrics_df) + 1)]
+    if rounding is not None:
+        for col in metrics_df.select_dtypes(include=["float"]).columns:
+            metrics_df[col] = metrics_df[col].round(rounding)
     if output_texts:
         return metrics_df, texts_df
     return metrics_df

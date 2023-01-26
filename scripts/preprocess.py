@@ -53,6 +53,7 @@ def preprocess(args: argparse.Namespace):
                     add_edit_information=args.add_edits,
                     add_eval_information=args.add_evals,
                     add_extra_information=args.add_extra,
+                    rounding=args.rounding,
                 )
                 if args.output_texts:
                     df_metrics, df_texts = df_metrics
@@ -135,5 +136,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether a merged dataframe across subjects and languages should be saved",
     )
+    parser.add_argument("--rounding", type=int, default=4, help="Decimals to round for floating point scores. Default: 4")
     args = parser.parse_args()
     preprocess(args)
