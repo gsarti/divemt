@@ -15,6 +15,7 @@ setup(
     install_requires=[
         "pandas",
         "sacrebleu",
+        "Levenshtein",
         "black",
         "flake8",
         "isort",

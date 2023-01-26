@@ -46,6 +46,11 @@ pip install -e .
 
 - Run the setup script to unzip all raw data folders.
 
+```bash
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+```
+
 - Run the preprocessing script to produce the TSV files containing sentences, scores and metrics.
 
 ```bash
