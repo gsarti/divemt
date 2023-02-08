@@ -85,11 +85,10 @@ main = pd.read_csv('data/processed/merged/full_main.tsv', sep="\t")
 main_texts = pd.read_csv('data/processed/merged/full_main_texts.tsv', sep="\t")
 warmup = pd.read_csv('data/processed/merged/full_warmup.tsv', sep="\t")
 warmup_texts = pd.read_csv('data/processed/merged/full_warmup_texts.tsv', sep="\t")
-
+main_texts.drop("lang_id", axis=1, inplace=True)
+warmup_texts.drop("lang_id", axis=1, inplace=True)
 df_main = pd.concat([main, main_texts.iloc[:, 1:]], axis=1)
-# Avoid deduplication, rows are already matching
 df_warmup = pd.concat([warmup, warmup_texts.iloc[:, 1:]], axis=1)
-
 df_main.to_csv("data/main.tsv", sep="\t", index=False)
 df_warmup.to_csv("data/warmup.tsv", sep="\t", index=False)
 ```

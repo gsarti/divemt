@@ -1,6 +1,6 @@
 """Utilities for tagging and tokenization."""
 
-from typing import Optional
+from typing import Optional, List
 
 import stanza
 import logging
@@ -22,11 +22,8 @@ stanza.logger.setLevel(logging.WARNING)
 _LOADED_NLP = {}
 
 STANZA_FIELDS = {
-    "id": int,
-    "text": str,
     "lemma": str,
     "upos": str,
-    "xpos": str,
     "feats": str,
     "head": int,
     "deprel": str,
@@ -35,6 +32,10 @@ STANZA_FIELDS = {
     "ner": str,
 }
 
+STANZA_WORD_FIELDS = ["lemma", "upos", "feats", "head", "deprel"]
+STANZA_TOKEN_FIELDS = ["start_char", "end_char", "ner"]
+
+
 def load_nlp(lang: str, tok_only: bool = False):
     if lang not in _STANZA_NLP_MAP:
         raise ValueError(f"Language {lang} not supported")
@@ -42,8 +43,10 @@ def load_nlp(lang: str, tok_only: bool = False):
         return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors='tokenize')
     return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors=_STANZA_NLP_MAP[lang]["processors"])
 
+
 def clear_nlp_cache():
     _LOADED_NLP.clear()
+
 
 def tokenize(sent: str, lang: str):
     if f"{lang}-tok-only" not in _LOADED_NLP:
@@ -51,12 +54,32 @@ def tokenize(sent: str, lang: str):
     nlp = _LOADED_NLP[f"{lang}-tok-only"]
     return " ".join([token.text for s in nlp(sent).sentences for token in s.tokens])
 
-def format_annotation(annotation: dict) -> str:
+
+def fill_blanks(annotation: dict) -> str:
     return {
         field: annotation.get(field, '') 
         if t is str else annotation.get(field, -1) 
         for field, t in STANZA_FIELDS.items()
     }
+
+
+def merge_mwt(annotation: List[dict]) -> dict:
+    if len(annotation) < 1:
+        raise ValueError("Annotation must have at least one token")
+    annotation = [fill_blanks(tok) for tok in annotation]
+    # single-word token
+    if len(annotation) == 1:
+        return annotation[0]
+    # multi-word token
+    merged = {}
+    token = annotation[0]
+    words = annotation[1:]
+    for field in STANZA_WORD_FIELDS:
+        merged[field] = "+".join([str(word[field]) for word in words])
+    for field in STANZA_TOKEN_FIELDS:
+        merged[field] = token[field]
+    return merged
+
 
 def get_tokens_annotations(text: Optional[str], lang: str):
     if lang not in _LOADED_NLP:
@@ -70,8 +93,9 @@ def get_tokens_annotations(text: Optional[str], lang: str):
     for s in doc.sentences:
         for tok in s.tokens:
             tokens.append(tok.text)
-            annotations.append([format_annotation(x) for x in tok.to_dict()])
+            annotations.append(merge_mwt(tok.to_dict()))
     return tokens, annotations
+
 
 def texts2annotations(
     data: pd.DataFrame,

@@ -236,13 +236,13 @@ def texts2edits(
     os.makedirs(tmp_path, exist_ok=True)
     if data is not None:
         if unit_id_contains_lang:
-            data["lang_id"] = data.unit_id.str.split("-").map(lambda x: x[2])
+            lang_ids = list(data.unit_id.str.split("-").map(lambda x: x[2]))
         refs, hyps, ids = [], [], []
-        for _, r in data.iterrows():
+        for i, r in data.iterrows():
             if r[ref_name] is not None and r[ref_name].strip() != "-":
                 assert "pe" in r[id_name]
-                refs += [tokenize(r[ref_name], r["lang_id"])] if "lang_id" in r else [r[ref_name]]
-                hyps += [tokenize(r[hyp_name], r["lang_id"])] if "lang_id" in r else [r[hyp_name]]
+                refs += [tokenize(r[ref_name], lang_ids[i])] if lang_ids else [r[ref_name]]
+                hyps += [tokenize(r[hyp_name], lang_ids[i])] if lang_ids else [r[hyp_name]]
                 ids += [r[id_name]]
         # Prepare files for tercom
         ref_fname = os.path.join(tmp_path, f"{prefix}_ref.txt")
