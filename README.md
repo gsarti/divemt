@@ -13,13 +13,15 @@ This repository contains data, scripts and notebooks associated to the paper ["D
 
 ```bibtex
 @inproceedings{sarti-etal-2022-divemt,
-    title={{DivEMT}: Neural Machine Translation Post-Editing Effort Across Typologically Diverse Languages},
+    title = "{D}iv{EMT}: Neural Machine Translation Post-Editing Effort Across Typologically Diverse Languages",
     author = "Sarti, Gabriele and Bisazza, Arianna and Guerberof Arenas, Ana and Toral, Antonio",
     booktitle = "Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing",
     month = dec,
     year = "2022",
+    address = "Abu Dhabi, United Arab Emirates",
     publisher = "Association for Computational Linguistics",
-    url = "https://arxiv.org/abs/2205.12215",
+    url = "https://aclanthology.org/2022.emnlp-main.532",
+    pages = "7795--7816",
 }
 ```
 
@@ -51,7 +53,7 @@ chmod +x scripts/setup.sh
 ./scripts/setup.sh
 ```
 
-- Run the preprocessing script to produce the TSV files containing sentences, scores and metrics.
+- Run the preprocessing script to produce the TSV files containing sentences, scores and metrics. Run time is ~30 minutes with Stanza annotations, ~1 minute without.
 
 ```bash
 # Run the preprocessing script
@@ -59,6 +61,7 @@ chmod +x scripts/setup.sh
 # --add_edits: Add HTER, CharacTER and edit types breakdown to scores
 # --add_evals: Add Bleu and ChrF to scores
 # --add_extra: Add extra derived metrics to scores
+# --add_annotations: Add Stanza annotations to sentences
 # --output_single: Produces individual TSVs for every language-translator pair in the respective language folders
 # --output_merged_subjects: Produces TSVs grouping all translators for every given language
 # --output_merged_languages: Produces the final TSV with all languages and translators
@@ -67,6 +70,7 @@ python scripts/preprocess.py \
 --add_edits \
 --add_evals \
 --add_extra \
+--add_annotations \
 --output_single \
 --output_merged_subjects \
 --output_merged_languages

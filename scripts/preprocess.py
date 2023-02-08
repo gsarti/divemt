@@ -53,6 +53,7 @@ def preprocess(args: argparse.Namespace):
                     add_edit_information=args.add_edits,
                     add_eval_information=args.add_evals,
                     add_extra_information=args.add_extra,
+                    add_annotations_information=args.add_annotations,
                     rounding=args.rounding,
                 )
                 if args.output_texts:
@@ -120,6 +121,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--add_extra", action="store_true", help="Whether to add extra information computed from existing fields"
+    )
+    parser.add_argument(
+        "--add_annotations", action="store_true", help="Whether to add annotation information computed from Stanza"
     )
     parser.add_argument(
         "--output_single",

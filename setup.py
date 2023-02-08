@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="divemt",
-    version="0.1.0",
+    version="0.2.0",
     author="Gabriele Sarti",
     author_email="g.sarti@rug.nl",
     description="Post-editing effectiveness for typologically-diverse languages",
@@ -17,6 +17,8 @@ setup(
         "sacrebleu",
         "Levenshtein",
         "stanza",
+        "simalign",
+        "tqdm",
         "black",
         "flake8",
         "isort",
