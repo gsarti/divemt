@@ -18,6 +18,7 @@ setup(
         "Levenshtein",
         "stanza",
         "simalign",
+        "strenum",
         "tqdm",
         "black",
         "flake8",

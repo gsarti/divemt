@@ -38,7 +38,10 @@ STANZA_TOKEN_FIELDS = ["start_char", "end_char", "ner"]
 
 def load_nlp(lang: str, tok_only: bool = False):
     if lang not in _STANZA_NLP_MAP:
-        raise ValueError(f"Language {lang} not supported")
+        try:
+            return stanza.Pipeline(lang=lang, processors='tokenize')
+        except:
+            raise ValueError(f"Language {lang} not supported")
     if tok_only:
         return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors='tokenize')
     return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors=_STANZA_NLP_MAP[lang]["processors"])
@@ -48,11 +51,17 @@ def clear_nlp_cache():
     _LOADED_NLP.clear()
 
 
-def tokenize(sent: str, lang: str):
+def tokenize(sent: str, lang: str, keep_tokens: bool = False):
     if f"{lang}-tok-only" not in _LOADED_NLP:
         _LOADED_NLP[f"{lang}-tok-only"] = load_nlp(lang, tok_only=True)
     nlp = _LOADED_NLP[f"{lang}-tok-only"]
-    return " ".join([token.text for s in nlp(sent).sentences for token in s.tokens])
+    # Since spaces are used to separate tokens in TERCom, if some are left inside tokens (e.g. "400 000")
+    # they are converted to underscores. This is better than removing them, since it preserves the length
+    # of the token and hence character offsets.
+    tokens = [token.text.replace(" ", "_") for s in nlp(sent).sentences for token in s.tokens]
+    if keep_tokens:
+        return tokens
+    return " ".join(tokens)
 
 
 def fill_blanks(annotation: dict) -> str:

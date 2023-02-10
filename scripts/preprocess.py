@@ -54,6 +54,7 @@ def preprocess(args: argparse.Namespace):
                     add_eval_information=args.add_evals,
                     add_extra_information=args.add_extra,
                     add_annotations_information=args.add_annotations,
+                    add_wmt22_quality_tags=args.add_wmt22_quality_tags,
                     rounding=args.rounding,
                 )
                 if args.output_texts:
@@ -124,6 +125,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--add_annotations", action="store_true", help="Whether to add annotation information computed from Stanza"
+    )
+    parser.add_argument(
+        "--add_wmt22_quality_tags", action="store_true", help="Whether to add WMT22 quality tags to the text dataframe"
     )
     parser.add_argument(
         "--output_single",

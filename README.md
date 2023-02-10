@@ -71,6 +71,7 @@ python scripts/preprocess.py \
 --add_evals \
 --add_extra \
 --add_annotations \
+--add_wmt22_quality_tags \
 --output_single \
 --output_merged_subjects \
 --output_merged_languages
@@ -93,7 +94,7 @@ df_main.to_csv("data/main.tsv", sep="\t", index=False)
 df_warmup.to_csv("data/warmup.tsv", sep="\t", index=False)
 ```
 
-These final files correspond to the two TSV files released in the [data](data/) folder, which are also used for the processed version of Divemt on [🤗 Datasets](https://huggingface.co/datasets/GroNLP/divemt) and for the [DivEMT Explorer](https://huggingface.co/spaces/GroNLP/divemt_explorer).
+These final files correspond to the two TSV files found in the processed version of DivEMT on [🤗 Datasets](https://huggingface.co/datasets/GroNLP/divemt) and for the [DivEMT Explorer](https://huggingface.co/spaces/GroNLP/divemt_explorer).
 
 ### Reproducing the Analysis and Plots
 

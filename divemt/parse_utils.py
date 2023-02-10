@@ -18,7 +18,8 @@ import pandas as pd
 from sacrebleu import sentence_bleu, sentence_chrf
 
 from .cer import cer
-from .tag_utils import tokenize, load_nlp, clear_nlp_cache, texts2annotations
+from .tag_utils import tokenize, clear_nlp_cache, texts2annotations
+from .qe_taggers import QETagger, WMT22QETagger
 
 logger = logging.getLogger(__name__)
 
@@ -247,8 +248,8 @@ def texts2edits(
         # Prepare files for tercom
         ref_fname = os.path.join(tmp_path, f"{prefix}_ref.txt")
         hyp_fname = os.path.join(tmp_path, f"{prefix}_hyp.txt")
-        with codecs.open(ref_fname, "w") as rf:
-            with codecs.open(hyp_fname, "w") as hf:
+        with codecs.open(ref_fname, "w", encoding="utf-8") as rf:
+            with codecs.open(hyp_fname, "w", encoding="utf-8") as hf:
                 for ref, hyp, idx in zip(refs, hyps, ids):
                     ref = ref.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"','\\"')
                     hyp = hyp.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"','\\"')
@@ -258,12 +259,12 @@ def texts2edits(
         ref_fname, hyp_fname = ref_name, hyp_name
     out_rootname = os.path.join(tmp_path, prefix)
     try:
-        _ = subprocess.run(
-            ["java", "-jar", tercom_path, "-r", ref_fname, "-h", hyp_fname, "-n", out_rootname], capture_output=True
-        )
-    except:
+        tercom_params = ["java", "-jar", tercom_path, "-r", ref_fname, "-h", hyp_fname, "-n", out_rootname]
+        _ = subprocess.run(tercom_params, capture_output=True, check=True)
+    except subprocess.CalledProcessError as e:
         logger.warning(
-            f"Error while running tercom. Please make sure you have java installed and that the .jar file is found at {tercom_path}"
+            f"Error while running tercom: {e.stderr}.\nPlease make sure you have java installed and that the .jar "
+            f"file is found at {tercom_path}"
         )
     # Parse tercom output
     ter_metrics = pd.read_table(f"{out_rootname}.sum", skiprows=3, sep="|", header=0, skipinitialspace=True).iloc[
@@ -326,6 +327,26 @@ def metrics2extra(
     return metrics_df
 
 
+def texts2qe(
+    data: pd.DataFrame,
+    tagger: QETagger,
+) -> pd.DataFrame:
+    """Add quality tags to a dataframe."""
+    pe_texts = data.copy()[data.mt_text.notnull()]
+    src_tags, mt_tags = tagger.generate_tags(
+        pe_texts["src_text"].tolist(),
+        pe_texts["mt_text"].tolist(),
+        pe_texts["tgt_text"].tolist(),
+        "eng",
+        pe_texts.unit_id.str.split("-").map(lambda x: x[2]),
+    )
+    pe_texts[f"src_{tagger.ID}"] = src_tags
+    pe_texts[f"mt_{tagger.ID}"] = mt_tags
+    pe_texts = pe_texts[["unit_id", f"src_{tagger.ID}", f"mt_{tagger.ID}"]]
+    data = data.join(pe_texts.set_index('unit_id'), on='unit_id')
+    return data
+
+
 def parse_from_folder(
     path: str,
     ref_name: Union[str, Sequence[str]] = "tgt_text",
@@ -337,6 +358,7 @@ def parse_from_folder(
     add_eval_information: bool = False,
     add_extra_information: bool = False,
     add_annotations_information: bool = False,
+    add_wmt22_quality_tags: bool = False,
     rounding: Optional[int] = None,
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
     """Parse all .per XML files in a folder and return a single dataframe containing all units."""
@@ -360,7 +382,10 @@ def parse_from_folder(
         if add_extra_information:
             metrics_df = metrics2extra(metrics_df)
         if add_annotations_information:
-            texts_df = texts2annotations(texts_df, id_name)
+            texts_df = texts2annotations(texts_df)
+        if add_wmt22_quality_tags:
+            tagger = WMT22QETagger()
+            texts_df = texts2qe(texts_df, tagger)
     if time_ordered:
         if output_texts:
             texts_df["time"] = metrics_df["last_modification_time"]
