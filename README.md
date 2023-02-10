@@ -53,7 +53,7 @@ chmod +x scripts/setup.sh
 ./scripts/setup.sh
 ```
 
-- Run the preprocessing script to produce the TSV files containing sentences, scores and metrics. Run time is ~30 minutes with Stanza annotations, ~1 minute without.
+- Run the preprocessing script to produce the TSV files containing sentences, scores and metrics. Run time is ~2 minutes with only raw metrics, +30 min for annotations and +45 min for QE tags, assuming GPU availability for SimAlign.
 
 ```bash
 # Run the preprocessing script
@@ -62,6 +62,7 @@ chmod +x scripts/setup.sh
 # --add_evals: Add Bleu and ChrF to scores
 # --add_extra: Add extra derived metrics to scores
 # --add_annotations: Add Stanza annotations to sentences
+# --add_wmt22_quality_tags: Add WMT22 quality tags to source and mt sentences for PE settings
 # --output_single: Produces individual TSVs for every language-translator pair in the respective language folders
 # --output_merged_subjects: Produces TSVs grouping all translators for every given language
 # --output_merged_languages: Produces the final TSV with all languages and translators
