@@ -1,20 +1,20 @@
 """Utilities for tagging and tokenization."""
 
-from typing import Optional, List
-
-import stanza
 import logging
+from typing import List, Optional
+
 import pandas as pd
+import stanza
 from tqdm import tqdm
 
 _STANZA_NLP_MAP = {
-    "eng": {"lang":'en', "processors":'tokenize,pos,depparse,ner,lemma'},
-    "ara": {"lang":'ar', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "nld": {"lang":'nl', "processors":'tokenize,pos,depparse,ner,lemma'},
-    "ita": {"lang":'it', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "tur": {"lang":'tr', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "ukr": {"lang":'uk', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "vie": {"lang":'vi', "processors":'tokenize,pos,depparse,ner,lemma'},
+    "eng": {"lang": "en", "processors": "tokenize,pos,depparse,ner,lemma"},
+    "ara": {"lang": "ar", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "nld": {"lang": "nl", "processors": "tokenize,pos,depparse,ner,lemma"},
+    "ita": {"lang": "it", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "tur": {"lang": "tr", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "ukr": {"lang": "uk", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "vie": {"lang": "vi", "processors": "tokenize,pos,depparse,ner,lemma"},
 }
 
 stanza.logger.setLevel(logging.WARNING)
@@ -39,12 +39,15 @@ STANZA_TOKEN_FIELDS = ["start_char", "end_char", "ner"]
 def load_nlp(lang: str, tok_only: bool = False):
     if lang not in _STANZA_NLP_MAP:
         try:
-            return stanza.Pipeline(lang=lang, processors='tokenize')
+            return stanza.Pipeline(lang=lang, processors="tokenize")
         except:
             raise ValueError(f"Language {lang} not supported")
     if tok_only:
-        return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors='tokenize')
-    return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors=_STANZA_NLP_MAP[lang]["processors"])
+        return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors="tokenize")
+    return stanza.Pipeline(
+        lang=_STANZA_NLP_MAP[lang]["lang"],
+        processors=_STANZA_NLP_MAP[lang]["processors"],
+    )
 
 
 def clear_nlp_cache():
@@ -64,10 +67,9 @@ def tokenize(sent: str, lang: str, keep_tokens: bool = False):
     return " ".join(tokens)
 
 
-def fill_blanks(annotation: dict) -> str:
+def fill_blanks(annotation: dict) -> dict:
     return {
-        field: annotation.get(field, '') 
-        if t is str else annotation.get(field, -1) 
+        field: annotation.get(field, "") if t is str else annotation.get(field, -1)
         for field, t in STANZA_FIELDS.items()
     }
 
@@ -97,7 +99,7 @@ def get_tokens_annotations(text: Optional[str], lang: str):
     if nlp is None or text is None:
         return None, None
     doc = nlp(text)
-    tokens = [] 
+    tokens = []
     annotations = []
     for s in doc.sentences:
         for tok in s.tokens:
@@ -106,10 +108,7 @@ def get_tokens_annotations(text: Optional[str], lang: str):
     return tokens, annotations
 
 
-def texts2annotations(
-    data: pd.DataFrame,
-    unit_id_contains_lang: bool = True
-) -> pd.DataFrame:
+def texts2annotations(data: pd.DataFrame, unit_id_contains_lang: bool = True) -> pd.DataFrame:
     if "lang_id" not in data.columns and unit_id_contains_lang:
         data["lang_id"] = data.unit_id.str.split("-").map(lambda x: x[2])
     src_tokens = []

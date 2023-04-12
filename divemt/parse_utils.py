@@ -3,23 +3,23 @@ Utilities for parsing and processing the data from .per to tabular format.
 Includes utilities for computing different sentence-level metrics (BLEU, TER, ChrF, CER).
 """
 
+import codecs
+import ctypes
 import logging
 import os
 import re
-import codecs
-import ctypes
 import shutil
 import subprocess
 import xml.etree.cElementTree as ET
 from collections import defaultdict
-from typing import Optional, Sequence, Tuple, Union, List
+from typing import List, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 from sacrebleu import sentence_bleu, sentence_chrf
 
 from .cer import cer
-from .tag_utils import tokenize, clear_nlp_cache, texts2annotations
 from .qe_taggers import QETagger, WMT22QETagger
+from .tag_utils import clear_nlp_cache, texts2annotations, tokenize
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ _EDITS_DF_MAP = {
 _EDITS_DF_TYPES = {v: int for v in _EDITS_DF_MAP.values() if v != "hter"}
 
 
-def time2seconds(input: str) -> float:
+def time2seconds(_input: str) -> float:
     """Convert a time expression from a per file to seconds.
     e.g. 1m15s,719 -> 75.719
     """
@@ -92,14 +92,14 @@ def time2seconds(input: str) -> float:
     minutes = 0
     seconds = 0
     milliseconds = 0
-    if "h" in input:
-        hours, input = tuple(input.split("h"))
-    if "m" in input:
-        minutes, input = tuple(input.split("m"))
-    if "s" in input:
-        seconds, input = tuple(input.split("s"))
-    if "," in input:
-        milliseconds = input.split(",")[1]
+    if "h" in _input:
+        hours, _input = tuple(_input.split("h"))
+    if "m" in _input:
+        minutes, _input = tuple(_input.split("m"))
+    if "s" in _input:
+        seconds, _input = tuple(_input.split("s"))
+    if "," in _input:
+        milliseconds = _input.split(",")[1]
     hours, minutes, seconds, milliseconds = map(int, (hours, minutes, seconds, milliseconds))
     return round(hours * 3600 + minutes * 60 + seconds + milliseconds / 1000, 3)
 
@@ -138,7 +138,10 @@ def per2metrics(filename: str) -> Optional[pd.DataFrame]:
         dict_metrics["tgt_len_chr"] += [len(target.text)]
         dict_metrics["tgt_len_wrd"] += [len(target.text.split())]
         dict_metrics["edit_time"] += [
-            round(sum([time2seconds(ann.findtext("indicator[@id='editing']")) for ann in annotations]), 3)
+            round(
+                sum([time2seconds(ann.findtext("indicator[@id='editing']")) for ann in annotations]),
+                3,
+            )
         ]
         for field, xpath in _KEYS_INDICATOR_MAP.items():
             dict_metrics[field] += [sum([int(ann.findtext(xpath)) for ann in annotations])]
@@ -210,7 +213,7 @@ def per2texts(filename: str) -> Optional[pd.DataFrame]:
 def texts2cer(
     ref_sentences: List[str],
     hyp_sentences: List[str],
-    libed_path: str = "scripts/libED.so",  
+    libed_path: str = "scripts/libED.so",
 ) -> List[float]:
     # Initialise the connection to C++
     ed_wrapper = ctypes.CDLL(libed_path)
@@ -251,15 +254,25 @@ def texts2edits(
         with codecs.open(ref_fname, "w", encoding="utf-8") as rf:
             with codecs.open(hyp_fname, "w", encoding="utf-8") as hf:
                 for ref, hyp, idx in zip(refs, hyps, ids):
-                    ref = ref.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"','\\"')
-                    hyp = hyp.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"','\\"')
+                    ref = ref.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', '\\"')
+                    hyp = hyp.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', '\\"')
                     rf.write(f"{ref}\t({idx})\n")
                     hf.write(f"{hyp}\t({idx})\n")
     else:
         ref_fname, hyp_fname = ref_name, hyp_name
     out_rootname = os.path.join(tmp_path, prefix)
     try:
-        tercom_params = ["java", "-jar", tercom_path, "-r", ref_fname, "-h", hyp_fname, "-n", out_rootname]
+        tercom_params = [
+            "java",
+            "-jar",
+            tercom_path,
+            "-r",
+            ref_fname,
+            "-h",
+            hyp_fname,
+            "-n",
+            out_rootname,
+        ]
         _ = subprocess.run(tercom_params, capture_output=True, check=True)
     except subprocess.CalledProcessError as e:
         logger.warning(
@@ -343,7 +356,7 @@ def texts2qe(
     pe_texts[f"src_{tagger.ID}"] = src_tags
     pe_texts[f"mt_{tagger.ID}"] = mt_tags
     pe_texts = pe_texts[["unit_id", f"src_{tagger.ID}", f"mt_{tagger.ID}"]]
-    data = data.join(pe_texts.set_index('unit_id'), on='unit_id')
+    data = data.join(pe_texts.set_index("unit_id"), on="unit_id")
     return data
 
 
@@ -364,7 +377,14 @@ def parse_from_folder(
     """Parse all .per XML files in a folder and return a single dataframe containing all units."""
     metrics_list_dfs = [per2metrics(os.path.join(path, f)) for f in os.listdir(path) if f.endswith(".per")]
     metrics_df = pd.concat([df for df in metrics_list_dfs if df is not None], ignore_index=True)
-    if output_texts or add_edit_information or add_eval_information or add_extra_information or add_annotations_information:
+
+    if (
+        output_texts
+        or add_edit_information
+        or add_eval_information
+        or add_extra_information
+        or add_annotations_information
+    ):
         texts_list_dfs = [per2texts(os.path.join(path, f)) for f in os.listdir(path) if f.endswith(".per")]
         texts_df = pd.concat([df for df in texts_list_dfs if df is not None], ignore_index=True)
         if add_edit_information:
@@ -386,15 +406,19 @@ def parse_from_folder(
         if add_wmt22_quality_tags:
             tagger = WMT22QETagger()
             texts_df = texts2qe(texts_df, tagger)
+
     if time_ordered:
         if output_texts:
             texts_df["time"] = metrics_df["last_modification_time"]
             texts_df = texts_df.sort_values(by=["time", "unit_id"]).drop(columns=["time"])
         metrics_df = metrics_df.sort_values(by=["last_modification_time", "unit_id"])
         metrics_df["per_subject_visit_order"] = [i for i in range(1, len(metrics_df) + 1)]
+
     if rounding is not None:
         for col in metrics_df.select_dtypes(include=["float"]).columns:
             metrics_df[col] = metrics_df[col].round(rounding)
+
     if output_texts:
         return metrics_df, texts_df
+
     return metrics_df

@@ -3,21 +3,22 @@ import logging
 import subprocess
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from strenum import StrEnum
 from pathlib import Path
-from typing import List, Tuple, Union, Optional
+from typing import List, Optional, Tuple, Union
 from xml.sax.saxutils import escape
 
 from simalign import SentenceAligner
+from strenum import StrEnum
 from tqdm import tqdm
 
-from .parse_utils import tokenize, clear_nlp_cache
-from .wmt22qe_utils import parse_tercom_xml_file, align_sentence_tercom
+from .parse_utils import clear_nlp_cache, tokenize
+from .wmt22qe_utils import align_sentence_tercom, parse_tercom_xml_file
 
 logger = logging.getLogger(__name__)
 
+
 class QETagger(ABC):
-    """ An abstract class to produce quality estimation tags from src-mt-pe triplets. """
+    """An abstract class to produce quality estimation tags from src-mt-pe triplets."""
 
     ID = "qe"
 
@@ -27,18 +28,18 @@ class QETagger(ABC):
         mt_tokens: List[List[str]],
         **align_source_mt_kwargs,
     ) -> List[List[Tuple[int, int]]]:
-        """ Align source and machine translation tokens. """
+        """Align source and machine translation tokens."""
         raise NotImplementedError(f"{self.__class__.__name__} does not implement align_source_mt()")
-    
+
     def align_source_pe(
         self,
         src_tokens: List[List[str]],
         pe_tokens: List[List[str]],
         **align_source_pe_kwargs,
     ) -> List[List[Tuple[int, int]]]:
-        """ Align source and post-edited tokens. """
+        """Align source and post-edited tokens."""
         raise NotImplementedError(f"{self.__class__.__name__} does not implement align_source_pe()")
-    
+
     @abstractmethod
     def align_mt_pe(
         self,
@@ -46,7 +47,7 @@ class QETagger(ABC):
         pe_tokens: List[List[str]],
         **align_mt_pe_kwargs,
     ) -> List[List[Tuple[int, int]]]:
-        """ Align machine translation and post-editing tokens. """
+        """Align machine translation and post-editing tokens."""
         pass
 
     @staticmethod
@@ -57,7 +58,7 @@ class QETagger(ABC):
         alignments: List[List[Tuple[int, int]]],
         **mt_tagging_kwargs,
     ) -> List[List[str]]:
-        """ Produce tags on MT tokens from edits found in the PE tokens. """
+        """Produce tags on MT tokens from edits found in the PE tokens."""
         pass
 
     @staticmethod
@@ -67,12 +68,12 @@ class QETagger(ABC):
         tgt_tokens: List[List[str]],
         **src_tagging_kwargs,
     ) -> List[List[str]]:
-        """ Propagate tags from MT to source. """
+        """Propagate tags from MT to source."""
         pass
 
     @staticmethod
     def get_tokenized(sents: List[str], lang: Union[str, List[str]]) -> Tuple[List[List[str]], List[List[str]]]:
-        """ Tokenize sentences. """
+        """Tokenize sentences."""
         if isinstance(lang, str):
             lang = [lang] * len(sents)
         tok = [tokenize(sent, curr_lang, keep_tokens=True) for sent, curr_lang in zip(sents, lang)]
@@ -98,7 +99,7 @@ class QETagger(ABC):
             pes (`List[str]`):
                 List of untokenized post-edited sentences.
             src_langs (`Union[str, List[str]]`):
-                Either a single language code for all source sentences or a list of language codes 
+                Either a single language code for all source sentences or a list of language codes
                 (one per source sentence).
             tgt_langs (`Union[str, List[str]]`):
                 Either a single language code for all target sentences or a list of language codes
@@ -112,27 +113,30 @@ class QETagger(ABC):
 
 
 class FluencyRule(StrEnum):
-    """ Fluency rules used in the WMT22 QE task. """
+    """Fluency rules used in the WMT22 QE task."""
+
     NORMAL = "normal"
     MISSING = "missing-only"
     IGNORE_SHF = "ignore-shift-set"
 
+
 class OmissionRule(StrEnum):
-    """ Omission rules used in the WMT22 QE task. """
+    """Omission rules used in the WMT22 QE task."""
+
     NONE = "none"
     LEFT = "left"
     RIGHT = "right"
 
+
 class WMT22QETags(StrEnum):
-    """
-    WMT22 QE tags
-    """
-    OK = 'OK'
-    BAD = 'BAD'
+    """WMT22 QE tags"""
+
+    OK = "OK"
+    BAD = "BAD"
 
 
 class WMT22QETagger(QETagger):
-    """ Mimics the word-level QE tagging process used for WMT22. """
+    """Mimics the word-level QE tagging process used for WMT22."""
 
     ID = "wmt22_qe"
 
@@ -143,7 +147,7 @@ class WMT22QETagger(QETagger):
         tercom_out: Optional[str] = None,
         tercom_path: Optional[str] = None,
     ):
-        """ Initialize the WMT22QETagger."""
+        """Initialize the WMT22QETagger."""
         self.aligner = aligner if aligner else SentenceAligner(model="xlmr", token_type="bpe", matching_methods="mai")
         self.tmp_dir = Path(tmp_dir) if tmp_dir is not None else Path("tmp")
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -159,15 +163,17 @@ class WMT22QETagger(QETagger):
         return [
             self.aligner.get_word_aligns(src_tok, mt_tok)["itermax" if mt_lang not in ["de", "cs"] else "inter"]
             for src_tok, mt_tok, mt_lang in tqdm(
-                zip(src_tokens, pe_tokens, pe_langs), total=len(src_tokens), desc="Aligning src-pe"
+                zip(src_tokens, pe_tokens, pe_langs),
+                total=len(src_tokens),
+                desc="Aligning src-pe",
             )
         ]
-    
+
     def align_mt_pe(
         self,
         mt_tokens: List[List[str]],
         pe_tokens: List[List[str]],
-    ) -> List[Tuple[int, int]]:
+    ) -> List[List[Tuple[int, int]]]:
         ref_fname = self.tmp_dir / "ref.txt"
         hyp_fname = self.tmp_dir / "hyp.txt"
         # Adapted from https://github.com/deep-spin/qe-corpus-builder/corpus_generation/tools/format_tercom.py
@@ -175,12 +181,24 @@ class WMT22QETagger(QETagger):
             with codecs.open(hyp_fname, "w", encoding="utf-8") as hf:
                 for idx, (ref, hyp) in enumerate(zip(mt_tokens, pe_tokens)):
                     ref = " ".join(ref).rstrip()
-                    ref = escape(ref).replace('"','\\"')
+                    ref = escape(ref).replace('"', '\\"')
                     rf.write(f"{ref}\t({idx})\n")
                     hyp = " ".join(hyp).rstrip()
-                    hyp = escape(hyp).replace('"','\\"')
+                    hyp = escape(hyp).replace('"', '\\"')
                     hf.write(f"{hyp}\t({idx})\n")
-        ps = ["java", "-jar", self.tercom_path, "-r", ref_fname, "-h", hyp_fname, "-n", self.tercom_out, "-d", "0"]
+        ps = [
+            "java",
+            "-jar",
+            self.tercom_path,
+            "-r",
+            ref_fname,
+            "-h",
+            hyp_fname,
+            "-n",
+            self.tercom_out,
+            "-d",
+            "0",
+        ]
         try:
             _ = subprocess.run(ps, capture_output=True, check=True)
         except subprocess.CalledProcessError as e:
@@ -199,7 +217,7 @@ class WMT22QETagger(QETagger):
             assert len([t for t in pe_par_toks if t]) == len(pe_toks), f"{pe_par_toks} != {pe_toks}"
 
         return [align_sentence_tercom(mt, pe, edit) for mt, pe, edit in zip(mt_tokens, pe_tokens, edits)]
-    
+
     @staticmethod
     def tags_from_edits(
         mt_tokens: List[List[str]],
@@ -208,13 +226,16 @@ class WMT22QETagger(QETagger):
         use_gaps: bool = False,
         omissions: str = OmissionRule.RIGHT.value,
     ) -> List[List[str]]:
-        """ Produce tags on MT tokens from edits found in the PE tokens. """
+        """Produce tags on MT tokens from edits found in the PE tokens."""
         if use_gaps:
             omissions = OmissionRule.NONE.value
-        
-        mt_tags = []
-        for mt_tok, pe_tok, align in tqdm(zip(mt_tokens, pe_tokens, alignments), desc="Tagging MT", total=len(mt_tokens)):
 
+        mt_tags = []
+        for mt_tok, pe_tok, align in tqdm(
+            zip(mt_tokens, pe_tokens, alignments),
+            desc="Tagging MT",
+            total=len(mt_tokens),
+        ):
             sent_tags = []
             sent_deletion_indices = []
             mt_position = 0
@@ -259,7 +280,7 @@ class WMT22QETagger(QETagger):
                 if omissions == OmissionRule.NONE:
                     mt_tags.append(sent_tags)
                 elif omissions == OmissionRule.RIGHT:
-                    for index,tag in enumerate(sent_tags):
+                    for index, tag in enumerate(sent_tags):
                         if index in sent_deletion_indices:
                             word_and_gaps_tags.append(WMT22QETags.BAD.value)
                         else:
@@ -273,27 +294,21 @@ class WMT22QETagger(QETagger):
                         word_and_gaps_tags.append(WMT22QETags.BAD.value)
                     else:
                         word_and_gaps_tags.append(WMT22QETags.OK.value)
-                    for index,tag in enumerate(sent_tags):
+                    for index, tag in enumerate(sent_tags):
                         if index in sent_deletion_indices:
                             word_and_gaps_tags.append(WMT22QETags.BAD.value)
                         else:
                             word_and_gaps_tags.append(tag)
                 mt_tags.append(word_and_gaps_tags)
-            
+
         # Basic sanity checks
         if use_gaps:
-            assert all(
-                [len(aa)*2 + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]
-            ), "MT tag creation failed"
+            assert all([len(aa) * 2 + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]), "MT tag creation failed"
         else:
             if omissions == OmissionRule.NONE:
-                assert all(
-                    [len(aa) == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]
-                ), "MT tag creation failed"
+                assert all([len(aa) == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]), "MT tag creation failed"
             else:
-                assert all(
-                    [len(aa)+1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]
-                ), "MT tag creation failed"
+                assert all([len(aa) + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]), "MT tag creation failed"
         return mt_tags
 
     @staticmethod
@@ -305,7 +320,7 @@ class WMT22QETagger(QETagger):
         mt_pe_alignments: List[List[Tuple[int, int]]],
         fluency_rule: str = FluencyRule.NORMAL.value,
     ) -> List[List[str]]:
-        """ Propagate tags from MT to source. """
+        """Propagate tags from MT to source."""
         # Reorganize source-target alignments as a dict
         pe2source = []
         for sent in src_pe_alignments:
@@ -315,11 +330,23 @@ class WMT22QETagger(QETagger):
             pe2source.append(pe2source_sent)
 
         src_tags = []
-        for src_sent_tok, mt_sent_tok, pe_sent_tok, sent_pe2src, sent_mt_pe_aligns in tqdm(zip(src_tokens, mt_tokens, pe_tokens, pe2source, mt_pe_alignments), desc="Tagging source", total=len(src_tokens)):
+        for (
+            src_sent_tok,
+            mt_sent_tok,
+            pe_sent_tok,
+            sent_pe2src,
+            sent_mt_pe_aligns,
+        ) in tqdm(
+            zip(src_tokens, mt_tokens, pe_tokens, pe2source, mt_pe_alignments),
+            desc="Tagging source",
+            total=len(src_tokens),
+        ):
             source_sentence_bad_indices = set()
             mt_position = 0
             for mt_idx, pe_idx in sent_mt_pe_aligns:
-                if mt_idx is None or (mt_idx is not None and pe_idx is not None and mt_sent_tok[mt_idx] != pe_sent_tok[pe_idx]):
+                if mt_idx is None or (
+                    mt_idx is not None and pe_idx is not None and mt_sent_tok[mt_idx] != pe_sent_tok[pe_idx]
+                ):
                     if fluency_rule == FluencyRule.NORMAL:
                         source_positions = sent_pe2src[pe_idx]
                         source_sentence_bad_indices |= set(source_positions)
@@ -343,13 +370,10 @@ class WMT22QETagger(QETagger):
             for index in list(source_sentence_bad_indices):
                 source_sentence_bad_tags[index] = WMT22QETags.BAD.value
             src_tags.append(source_sentence_bad_tags)
-        
-        # Basic sanity checks
-        assert all(
-            [len(aa) == len(bb) for aa, bb in zip(src_tokens, src_tags)]
-        ), "SRC tag creation failed"
-        return src_tags
 
+        # Basic sanity checks
+        assert all([len(aa) == len(bb) for aa, bb in zip(src_tokens, src_tags)]), "SRC tag creation failed"
+        return src_tags
 
     def generate_tags(
         self,
@@ -369,8 +393,12 @@ class WMT22QETagger(QETagger):
         mt_pe_alignments = self.align_mt_pe(mt_tokens, pe_tokens)
         mt_tags = self.tags_from_edits(mt_tokens, pe_tokens, mt_pe_alignments, use_gaps, omissions)
         src_tags = self.tags_to_source(
-            src_tokens, pe_tokens, mt_tokens, src_pe_alignments, mt_pe_alignments, fluency_rule
+            src_tokens,
+            pe_tokens,
+            mt_tokens,
+            src_pe_alignments,
+            mt_pe_alignments,
+            fluency_rule,
         )
         clear_nlp_cache()
         return src_tags, mt_tags
-
