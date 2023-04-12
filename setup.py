@@ -13,6 +13,7 @@ setup(
     package_dir={"": "."},
     packages=["divemt"],
     install_requires=[
+        "numpy<1.19.5",  # as simalign is not compatible with numpy >=1.20.0 (np.int is deprecated), 1.19.5 vulnerable
         "pandas",
         "sacrebleu",
         "Levenshtein",

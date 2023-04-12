@@ -18,8 +18,8 @@ import pandas as pd
 from sacrebleu import sentence_bleu, sentence_chrf
 
 from .cer import cer
-from .qe_taggers import QETagger, WMT22QETagger
-from .tag_utils import clear_nlp_cache, texts2annotations, tokenize
+from .tag_utils import tokenize, clear_nlp_cache, texts2annotations
+from .qe_taggers import QETagger, WMT22QETagger  # isort: skip  <- due to circular import with tag_utils
 
 logger = logging.getLogger(__name__)
 
