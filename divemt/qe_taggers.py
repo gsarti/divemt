@@ -72,11 +72,13 @@ class QETagger(ABC):
         pass
 
     @staticmethod
-    def get_tokenized(sents: List[str], lang: Union[str, List[str]]) -> Tuple[List[List[str]], List[List[str]]]:
+    def get_tokenized(
+        sents: List[str], lang: Union[str, List[str]]
+    ) -> Tuple[List[List[str]], Union[List[str], List[List[str]]]]:
         """Tokenize sentences."""
         if isinstance(lang, str):
             lang = [lang] * len(sents)
-        tok = [tokenize(sent, curr_lang, keep_tokens=True) for sent, curr_lang in zip(sents, lang)]
+        tok: List[List[str]] = [tokenize(sent, curr_lang, keep_tokens=True) for sent, curr_lang in zip(sents, lang)]
         assert len(tok) == len(lang)
         return tok, lang
 
@@ -177,8 +179,8 @@ class WMT22QETagger(QETagger):
         ref_fname = self.tmp_dir / "ref.txt"
         hyp_fname = self.tmp_dir / "hyp.txt"
         # Adapted from https://github.com/deep-spin/qe-corpus-builder/corpus_generation/tools/format_tercom.py
-        with codecs.open(ref_fname, "w", encoding="utf-8") as rf:
-            with codecs.open(hyp_fname, "w", encoding="utf-8") as hf:
+        with codecs.open(str(ref_fname), "w", encoding="utf-8") as rf:
+            with codecs.open(str(hyp_fname), "w", encoding="utf-8") as hf:
                 for idx, (ref, hyp) in enumerate(zip(mt_tokens, pe_tokens)):
                     ref = " ".join(ref).rstrip()
                     ref = escape(ref).replace('"', '\\"')
@@ -354,16 +356,12 @@ class WMT22QETagger(QETagger):
                         if pe_sent_tok[pe_idx] not in mt_sent_tok:
                             source_positions = sent_pe2src[pe_idx]
                             source_sentence_bad_indices |= set(source_positions)
-                        else:
-                            source_positions = None
                     elif fluency_rule == FluencyRule.MISSING:
                         if mt_idx is None:
                             source_positions = sent_pe2src[pe_idx]
                             source_sentence_bad_indices |= set(source_positions)
-                        else:
-                            source_positions = None
                     else:
-                        raise Exception(f"Uknown fluency rule {fluency_rule}")
+                        raise Exception(f"Unknown fluency rule {fluency_rule}")
                 else:
                     mt_position += 1
             source_sentence_bad_tags = [WMT22QETags.OK.value] * len(src_sent_tok)
@@ -385,7 +383,7 @@ class WMT22QETagger(QETagger):
         use_gaps: bool = False,
         omissions: str = OmissionRule.RIGHT.value,
         fluency_rule: str = FluencyRule.NORMAL.value,
-    ) -> Tuple[List[str], List[str]]:
+    ) -> Tuple[List[List[str]], List[List[str]]]:
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)

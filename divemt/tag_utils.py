@@ -1,7 +1,7 @@
 """Utilities for tagging and tokenization."""
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple, Union
 
 import pandas as pd
 import stanza
@@ -40,7 +40,7 @@ def load_nlp(lang: str, tok_only: bool = False):
     if lang not in _STANZA_NLP_MAP:
         try:
             return stanza.Pipeline(lang=lang, processors="tokenize")
-        except:
+        except Exception:
             raise ValueError(f"Language {lang} not supported")
     if tok_only:
         return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors="tokenize")
@@ -54,7 +54,7 @@ def clear_nlp_cache():
     _LOADED_NLP.clear()
 
 
-def tokenize(sent: str, lang: str, keep_tokens: bool = False):
+def tokenize(sent: str, lang: str, keep_tokens: bool = False) -> Union[str, List[str]]:
     if f"{lang}-tok-only" not in _LOADED_NLP:
         _LOADED_NLP[f"{lang}-tok-only"] = load_nlp(lang, tok_only=True)
     nlp = _LOADED_NLP[f"{lang}-tok-only"]
@@ -92,7 +92,7 @@ def merge_mwt(annotation: List[dict]) -> dict:
     return merged
 
 
-def get_tokens_annotations(text: Optional[str], lang: str):
+def get_tokens_annotations(text: Optional[str], lang: str) -> Tuple[Optional[List[str]], Optional[List[dict]]]:
     if lang not in _LOADED_NLP:
         _LOADED_NLP[lang] = load_nlp(lang)
     nlp = _LOADED_NLP[lang]
