@@ -400,3 +400,87 @@ class WMT22QETagger(QETagger):
         )
         clear_nlp_cache()
         return src_tags, mt_tags
+
+
+class NameTBDTagger(QETagger):
+
+    def __init__(
+        self,
+        aligner: Optional[SentenceAligner] = None,
+    ):
+        self.aligner = aligner if aligner else SentenceAligner(model="bert", token_type="bpe", matching_methods="mai")
+
+    def align_source_mt(
+        self,
+        src_tokens: List[List[str]],
+        mt_tokens: List[List[str]],
+        src_langs: List[str],
+        mt_langs: List[str],
+    ) -> List[List[Tuple[int, int]]]:
+        return [
+            self.aligner.get_word_aligns(src_tok, mt_tok)["inter"]
+            for src_tok, mt_tok in tqdm(
+                zip(src_tokens, mt_tokens), total=len(src_tokens), desc="Aligning src-mt"
+            )
+        ]
+
+    def align_mt_pe(
+        self,
+        mt_tokens: List[List[str]],
+        pe_tokens: List[List[str]],
+        langs: List[str],
+    ) -> List[Tuple[int, int]]:
+        return [
+            self.aligner.get_word_aligns(mt_tok, pe_tok)["inter"]
+            for mt_tok, pe_tok in tqdm(
+                zip(mt_tokens, pe_tokens), total=len(mt_tokens), desc="Aligning mt-pe"
+            )
+        ]
+
+    @staticmethod
+    def tags_from_edits(
+        mt_tokens: List[List[str]],
+        pe_tokens: List[List[str]],
+        alignments: List[List[Tuple[int, int]]],
+    ) -> List[List[str]]:
+        """ Produce tags on MT tokens from edits found in the PE tokens. """
+        # 1:1 match: OK if same, SUB if different
+        # 1:n match:
+        # - Find highest match for 1 in n (lexical, LaBSE if not found)
+        # - If all matches are < threshold, tag as EXP (expansion)
+        # - Else, assign OK if same, SUB if different
+        # - If match preceded by some of the n, assign also INS to match
+        # - If match followed by some of the n, push an INS tag to the next token
+        # n:1 match:
+        # - Find highest match for 1 in n (lexical, LaBSE if not found)
+        # - If all matches are < threshold, tag as CON (contraction)
+        # - Else, assign OK if same, SUB if different
+        # - All n different than match are assigned DEL
+        # n:m match:
+        # - For each 1 in n, find highest match for 1 in m (lexical, LaBSE if not found, from highest score to lowest)
+        # - If all matches are < threshold, skip and continue
+        # - Else assign OK if same, SUB if different, remove from available m matches
+        # If in a block with multiple crossing alignments (with blocks named A, B, ...):
+        # - Swapped pair A, B -> B, A: Both blocks recive SHF
+        # - For n > 2, all blocks changing relative position recive SHF, others don't
+        raise NotImplementedError()
+
+    @staticmethod
+    def tags_to_source(
+        src_tokens: List[List[str]],
+        mt_tokens: List[List[str]],
+        alignments: List[List[Tuple[int, int]]],
+        mt_tags: List[List[str]],
+    ) -> List[List[str]]:
+        """ Propagate tags from MT to source. """
+        # 1:1 match: copy tags from MT
+        # 1:n match:
+        # - Find highest match for 1 in n (lexical, LaBSE if not found)
+        # - If all matches are < threshold, TBD
+        # - Else, copy tags from top match in MT and ignore other matches
+        # n:1 match: copy tags from 1 to all n
+        # n:m match:
+        # - For each 1 in n, find highest match for 1 in m (lexical, LaBSE if not found)
+        # - If all matches are < threshold, ignore and continue
+        # - Copy tags from top match in MT and ignore other matches
+        raise NotImplementedError()
