@@ -22,13 +22,13 @@ def parse_tercom_xml_file(filepath):
     """
     dom = parse(filepath)
     hyp_elems = dom.getElementsByTagName("hyp")
-    hyps = list()  # list of list of tokens
-    refs = list()  # list of list of tokens
-    hyps_edits = list()  # list of list of edits
+    hyps = []  # list of list of tokens
+    refs = []  # list of list of tokens
+    hyps_edits = []  # list of list of edits
     for hyp_edits in hyp_elems:
-        hyp = list()
-        ref = list()
-        h_edits = list()
+        hyp = []
+        ref = []
+        h_edits = []
         for edits in hyp_edits.childNodes:
             edit_list = edits.data.split()
             for edit in edit_list:

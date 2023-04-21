@@ -305,12 +305,12 @@ class WMT22QETagger(QETagger):
 
         # Basic sanity checks
         if use_gaps:
-            assert all([len(aa) * 2 + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]), "MT tag creation failed"
+            assert all(len(aa) * 2 + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)), "MT tag creation failed"
         else:
             if omissions == OmissionRule.NONE:
-                assert all([len(aa) == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]), "MT tag creation failed"
+                assert all(len(aa) == len(bb) for aa, bb in zip(mt_tokens, mt_tags)), "MT tag creation failed"
             else:
-                assert all([len(aa) + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)]), "MT tag creation failed"
+                assert all(len(aa) + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)), "MT tag creation failed"
         return mt_tags
 
     @staticmethod
@@ -370,7 +370,7 @@ class WMT22QETagger(QETagger):
             src_tags.append(source_sentence_bad_tags)
 
         # Basic sanity checks
-        assert all([len(aa) == len(bb) for aa, bb in zip(src_tokens, src_tags)]), "SRC tag creation failed"
+        assert all(len(aa) == len(bb) for aa, bb in zip(src_tokens, src_tags)), "SRC tag creation failed"
         return src_tags
 
     def generate_tags(

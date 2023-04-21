@@ -6,7 +6,7 @@ setup(
     author="Gabriele Sarti",
     author_email="g.sarti@rug.nl",
     description="Post-editing effectiveness for typologically-diverse languages",
-    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     license="GPLv3",
     url="https://github.com/gsarti/divemt",
@@ -20,10 +20,13 @@ setup(
         "stanza",
         "simalign",
         "strenum",
+        "sentencepiece",
         "tqdm",
         "black",
         "flake8",
         "isort",
+        "pytest",
+        "ruff",
     ],
-    python_requires=">=3.6.0"
+    python_requires=">=3.6.0",
 )

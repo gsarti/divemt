@@ -4,7 +4,6 @@ import os
 from itertools import product
 
 import pandas as pd
-
 from divemt import parse_from_folder
 
 logging.basicConfig(
@@ -29,7 +28,7 @@ def preprocess(args: argparse.Namespace):
             os.makedirs(path, exist_ok=True)
     if args.tasks is None:
         tasks = {
-            lang: list(set([f.split("_")[1] for f in os.listdir(lang_source_paths[lang])])) for lang in args.languages
+            lang: list({f.split("_")[1] for f in os.listdir(lang_source_paths[lang])}) for lang in args.languages
         }
     else:
         tasks = {lang: args.tasks for lang in args.languages}
@@ -39,7 +38,7 @@ def preprocess(args: argparse.Namespace):
     for lang in args.languages:
         logger.info(f"\nLanguage: {lang}\n========")
         subjects = (
-            list(sorted(set([f.split("_")[0] for f in os.listdir(lang_source_paths[lang])])))
+            sorted({f.split("_")[0] for f in os.listdir(lang_source_paths[lang])})
             if args.subjects is None
             else args.subjects
         )
@@ -100,7 +99,7 @@ def preprocess(args: argparse.Namespace):
                     index=False,
                 )
     if args.output_merged_languages:
-        all_tasks = set([task for lang in args.languages for task in tasks[lang]])
+        all_tasks = {task for lang in args.languages for task in tasks[lang]}
         for task in all_tasks:
             df_metrics = pd.concat(
                 [df_metrics for lang in args.languages for df_metrics in results_dict[lang].get(task, [])]

@@ -10,7 +10,7 @@ import os
 import re
 import shutil
 import subprocess
-import xml.etree.cElementTree as ET
+import xml.etree.ElementTree as ET
 from collections import defaultdict
 from typing import List, Optional, Sequence, Tuple, Union
 
@@ -18,7 +18,7 @@ import pandas as pd
 from sacrebleu import sentence_bleu, sentence_chrf
 
 from .cer import cer
-from .tag_utils import tokenize, clear_nlp_cache, texts2annotations
+from .tag_utils import clear_nlp_cache, texts2annotations, tokenize
 from .qe_taggers import QETagger, WMT22QETagger  # isort: skip  <- due to circular import with tag_utils
 
 logger = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ def per2metrics(filename: str) -> Optional[pd.DataFrame]:
         else:
             dict_metrics["mt_len_chr"] += [None]
             dict_metrics["mt_len_wrd"] += [None]
-        annotations = [a for a in curr_unit.iterfind("annotations/annotation")]
+        annotations = list(curr_unit.iterfind("annotations/annotation"))
         final_annotation = annotations[-1]
         target = final_annotation.find("PE" if translation_type == "pe" else "HT")
         dict_metrics["subject_id"] += [target.get("producer").split(".")[0]]
@@ -204,7 +204,7 @@ def per2texts(filename: str) -> Optional[pd.DataFrame]:
         dict_texts["unit_id"] += [f"{job_id}-{curr_unit_id}"]
         dict_texts["src_text"] += [curr_unit.findtext("S")]
         dict_texts["mt_text"] += [curr_unit.findtext("MT")] if trans_type == "pe" else [None]
-        final_annotation = [a for a in curr_unit.iterfind("annotations/annotation")][-1]
+        final_annotation = list(curr_unit.iterfind("annotations/annotation"))[-1]
         dict_texts["tgt_text"] += [final_annotation.findtext("PE" if trans_type == "pe" else "HT")]
     texts_df = pd.DataFrame(dict_texts)
     return texts_df
@@ -285,14 +285,18 @@ def texts2edits(
     ]
     ter_metrics.columns = [x.strip() for x in ter_metrics.columns]
     ter_metrics["Sent Id"] = ter_metrics["Sent Id"].apply(lambda x: x.split(":")[0])
-    with open(f"{out_rootname}.pra_more", "r") as f:
+    with open(f"{out_rootname}.pra_more") as f:
         aligned_edits = "\n".join([x.strip() for x in f.readlines()])
     shutil.rmtree(tmp_path)
     p = re.compile("REF:.*\nHYP:.*\nEVAL:.*")
     ter_metrics["aligned_edit"] = [x.replace("\n", "\\n") for x in p.findall(aligned_edits)]
     ter_metrics = ter_metrics.rename(columns={**{"Sent Id": id_name}, **_EDITS_DF_MAP}).astype(_EDITS_DF_TYPES)
     # Intentionally swapped to match the expected input of CER
-    ter_metrics["cer"] = texts2cer(hyps, refs)
+    try:
+        ter_metrics["cer"] = texts2cer(hyps, refs)
+    except Exception as e:
+        # Not working at macos
+        logger.warning(f"Error while computing CER: {e}")
     clear_nlp_cache()
     return ter_metrics
 
@@ -412,7 +416,7 @@ def parse_from_folder(
             texts_df["time"] = metrics_df["last_modification_time"]
             texts_df = texts_df.sort_values(by=["time", "unit_id"]).drop(columns=["time"])
         metrics_df = metrics_df.sort_values(by=["last_modification_time", "unit_id"])
-        metrics_df["per_subject_visit_order"] = [i for i in range(1, len(metrics_df) + 1)]
+        metrics_df["per_subject_visit_order"] = list(range(1, len(metrics_df) + 1))
 
     if rounding is not None:
         for col in metrics_df.select_dtypes(include=["float"]).columns:

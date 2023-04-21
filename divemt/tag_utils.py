@@ -117,7 +117,7 @@ def texts2annotations(data: pd.DataFrame, unit_id_contains_lang: bool = True) ->
     mt_annotations = []
     tgt_tokens = []
     tgt_annotations = []
-    for i, row in tqdm(data.iterrows(), desc="Adding Stanza annotations...", total=len(data)):
+    for _i, row in tqdm(data.iterrows(), desc="Adding Stanza annotations...", total=len(data)):
         src_tok, src_ann = get_tokens_annotations(row.src_text, "eng")
         mt_tok, mt_ann = get_tokens_annotations(row.mt_text, row.lang_id)
         tgt_tok, tgt_ann = get_tokens_annotations(row.tgt_text, row.lang_id)

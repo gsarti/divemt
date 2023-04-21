@@ -3,15 +3,14 @@
 # Check that source code meets quality standards
 
 quality:
-	black --check --line-length 119 --target-version py36 divemt scripts
-	isort --check-only divemt scripts
-	flake8 --ignore=E501 divemt scripts
+	black --diff --check --config pyproject.toml ./
+	ruff  --no-fix --config pyproject.toml ./
 
 # Format source code automatically
 
 style:
-	black --line-length 119 --target-version py36 divemt scripts
-	isort divemt scripts
+	black --config pyproject.toml ./
+	ruff --config pyproject.toml ./
 
 # Setup the library
 
