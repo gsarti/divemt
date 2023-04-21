@@ -19,6 +19,7 @@ from sacrebleu import sentence_bleu, sentence_chrf
 
 from .cer import cer
 from .tag_utils import clear_nlp_cache, texts2annotations, tokenize
+
 from .qe_taggers import QETagger, WMT22QETagger  # isort: skip  <- due to circular import with tag_utils
 
 logger = logging.getLogger(__name__)
@@ -221,8 +222,8 @@ def texts2cer(
     scores = []
     # Split the hypothesis and reference sentences into word lists
     for _, (hyp, ref) in enumerate(zip(hyp_sentences, ref_sentences), start=1):
-        ref, hyp = ref.split(), hyp.split()
-        score = cer(hyp, ref, ed_wrapper)
+        _ref, _hyp = ref.split(), hyp.split()
+        score = cer(_hyp, _ref, ed_wrapper)
         scores.append(score)
     return scores
 
@@ -254,10 +255,10 @@ def texts2edits(
         with codecs.open(ref_fname, "w", encoding="utf-8") as rf:
             with codecs.open(hyp_fname, "w", encoding="utf-8") as hf:
                 for ref, hyp, idx in zip(refs, hyps, ids):
-                    ref = ref.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', '\\"')
-                    hyp = hyp.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', '\\"')
-                    rf.write(f"{ref}\t({idx})\n")
-                    hf.write(f"{hyp}\t({idx})\n")
+                    _ref = ref.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', '\\"')
+                    _hyp = hyp.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', '\\"')
+                    rf.write(f"{_ref}\t({idx})\n")
+                    hf.write(f"{_hyp}\t({idx})\n")
     else:
         ref_fname, hyp_fname = ref_name, hyp_name
     out_rootname = os.path.join(tmp_path, prefix)

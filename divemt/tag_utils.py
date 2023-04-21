@@ -40,8 +40,8 @@ def load_nlp(lang: str, tok_only: bool = False):
     if lang not in _STANZA_NLP_MAP:
         try:
             return stanza.Pipeline(lang=lang, processors="tokenize")
-        except Exception:
-            raise ValueError(f"Language {lang} not supported")
+        except Exception as e:
+            raise ValueError(f"Language {lang} not supported") from e
     if tok_only:
         return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors="tokenize")
     return stanza.Pipeline(

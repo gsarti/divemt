@@ -182,12 +182,12 @@ class WMT22QETagger(QETagger):
         with codecs.open(str(ref_fname), "w", encoding="utf-8") as rf:
             with codecs.open(str(hyp_fname), "w", encoding="utf-8") as hf:
                 for idx, (ref, hyp) in enumerate(zip(mt_tokens, pe_tokens)):
-                    ref = " ".join(ref).rstrip()
-                    ref = escape(ref).replace('"', '\\"')
-                    rf.write(f"{ref}\t({idx})\n")
-                    hyp = " ".join(hyp).rstrip()
-                    hyp = escape(hyp).replace('"', '\\"')
-                    hf.write(f"{hyp}\t({idx})\n")
+                    _ref = " ".join(ref).rstrip()
+                    _ref = escape(_ref).replace('"', '\\"')
+                    rf.write(f"{_ref}\t({idx})\n")
+                    _hyp = " ".join(hyp).rstrip()
+                    _hyp = escape(_hyp).replace('"', '\\"')
+                    hf.write(f"{_hyp}\t({idx})\n")
         ps = [
             "java",
             "-jar",
@@ -307,7 +307,7 @@ class WMT22QETagger(QETagger):
         if use_gaps:
             assert all(len(aa) * 2 + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)), "MT tag creation failed"
         else:
-            if omissions == OmissionRule.NONE:
+            if omissions == OmissionRule.NONE:  # noqa: PLR5501
                 assert all(len(aa) == len(bb) for aa, bb in zip(mt_tokens, mt_tags)), "MT tag creation failed"
             else:
                 assert all(len(aa) + 1 == len(bb) for aa, bb in zip(mt_tokens, mt_tags)), "MT tag creation failed"
