@@ -1,20 +1,20 @@
 """Utilities for tagging and tokenization."""
 
-from typing import Optional, List
-
-import stanza
 import logging
+from typing import List, Optional, Tuple, Union
+
 import pandas as pd
+import stanza
 from tqdm import tqdm
 
 _STANZA_NLP_MAP = {
-    "eng": {"lang":'en', "processors":'tokenize,pos,depparse,ner,lemma'},
-    "ara": {"lang":'ar', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "nld": {"lang":'nl', "processors":'tokenize,pos,depparse,ner,lemma'},
-    "ita": {"lang":'it', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "tur": {"lang":'tr', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "ukr": {"lang":'uk', "processors":'tokenize,pos,depparse,ner,lemma,mwt'},
-    "vie": {"lang":'vi', "processors":'tokenize,pos,depparse,ner,lemma'},
+    "eng": {"lang": "en", "processors": "tokenize,pos,depparse,ner,lemma"},
+    "ara": {"lang": "ar", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "nld": {"lang": "nl", "processors": "tokenize,pos,depparse,ner,lemma"},
+    "ita": {"lang": "it", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "tur": {"lang": "tr", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "ukr": {"lang": "uk", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
+    "vie": {"lang": "vi", "processors": "tokenize,pos,depparse,ner,lemma"},
 }
 
 stanza.logger.setLevel(logging.WARNING)
@@ -39,19 +39,22 @@ STANZA_TOKEN_FIELDS = ["start_char", "end_char", "ner"]
 def load_nlp(lang: str, tok_only: bool = False):
     if lang not in _STANZA_NLP_MAP:
         try:
-            return stanza.Pipeline(lang=lang, processors='tokenize')
-        except:
-            raise ValueError(f"Language {lang} not supported")
+            return stanza.Pipeline(lang=lang, processors="tokenize")
+        except Exception as e:
+            raise ValueError(f"Language {lang} not supported") from e
     if tok_only:
-        return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors='tokenize')
-    return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors=_STANZA_NLP_MAP[lang]["processors"])
+        return stanza.Pipeline(lang=_STANZA_NLP_MAP[lang]["lang"], processors="tokenize")
+    return stanza.Pipeline(
+        lang=_STANZA_NLP_MAP[lang]["lang"],
+        processors=_STANZA_NLP_MAP[lang]["processors"],
+    )
 
 
 def clear_nlp_cache():
     _LOADED_NLP.clear()
 
 
-def tokenize(sent: str, lang: str, keep_tokens: bool = False):
+def tokenize(sent: str, lang: str, keep_tokens: bool = False) -> Union[str, List[str]]:
     if f"{lang}-tok-only" not in _LOADED_NLP:
         _LOADED_NLP[f"{lang}-tok-only"] = load_nlp(lang, tok_only=True)
     nlp = _LOADED_NLP[f"{lang}-tok-only"]
@@ -64,10 +67,9 @@ def tokenize(sent: str, lang: str, keep_tokens: bool = False):
     return " ".join(tokens)
 
 
-def fill_blanks(annotation: dict) -> str:
+def fill_blanks(annotation: dict) -> dict:
     return {
-        field: annotation.get(field, '') 
-        if t is str else annotation.get(field, -1) 
+        field: annotation.get(field, "") if t is str else annotation.get(field, -1)
         for field, t in STANZA_FIELDS.items()
     }
 
@@ -90,14 +92,14 @@ def merge_mwt(annotation: List[dict]) -> dict:
     return merged
 
 
-def get_tokens_annotations(text: Optional[str], lang: str):
+def get_tokens_annotations(text: Optional[str], lang: str) -> Tuple[Optional[List[str]], Optional[List[dict]]]:
     if lang not in _LOADED_NLP:
         _LOADED_NLP[lang] = load_nlp(lang)
     nlp = _LOADED_NLP[lang]
     if nlp is None or text is None:
         return None, None
     doc = nlp(text)
-    tokens = [] 
+    tokens = []
     annotations = []
     for s in doc.sentences:
         for tok in s.tokens:
@@ -106,10 +108,7 @@ def get_tokens_annotations(text: Optional[str], lang: str):
     return tokens, annotations
 
 
-def texts2annotations(
-    data: pd.DataFrame,
-    unit_id_contains_lang: bool = True
-) -> pd.DataFrame:
+def texts2annotations(data: pd.DataFrame, unit_id_contains_lang: bool = True) -> pd.DataFrame:
     if "lang_id" not in data.columns and unit_id_contains_lang:
         data["lang_id"] = data.unit_id.str.split("-").map(lambda x: x[2])
     src_tokens = []
@@ -118,7 +117,7 @@ def texts2annotations(
     mt_annotations = []
     tgt_tokens = []
     tgt_annotations = []
-    for i, row in tqdm(data.iterrows(), desc="Adding Stanza annotations...", total=len(data)):
+    for _i, row in tqdm(data.iterrows(), desc="Adding Stanza annotations...", total=len(data)):
         src_tok, src_ann = get_tokens_annotations(row.src_text, "eng")
         mt_tok, mt_ann = get_tokens_annotations(row.mt_text, row.lang_id)
         tgt_tok, tgt_ann = get_tokens_annotations(row.tgt_text, row.lang_id)

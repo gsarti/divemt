@@ -10,6 +10,8 @@ data/raw/vie/*/*
 tmp/*
 outputs/*
 
+.idea/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

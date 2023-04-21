@@ -1,16 +1,19 @@
 import re
-from strenum import StrEnum
 from typing import List, Tuple
 from xml.dom.minidom import parse
+
+from strenum import StrEnum
+
 
 class TercomEdit(StrEnum):
     """
     Tercom error types
     """
-    CORRECT = 'C'
-    SUBSTITUTION = 'S'
-    INSERTION = 'I'
-    DELETION = 'D'
+
+    CORRECT = "C"
+    SUBSTITUTION = "S"
+    INSERTION = "I"
+    DELETION = "D"
 
 
 def parse_tercom_xml_file(filepath):
@@ -19,13 +22,13 @@ def parse_tercom_xml_file(filepath):
     """
     dom = parse(filepath)
     hyp_elems = dom.getElementsByTagName("hyp")
-    hyps = list() #list of list of tokens
-    refs = list() #list of list of tokens
-    hyps_edits = list() #list of list of edits
+    hyps = []  # list of list of tokens
+    refs = []  # list of list of tokens
+    hyps_edits = []  # list of list of edits
     for hyp_edits in hyp_elems:
-        hyp = list()
-        ref = list()
-        h_edits = list()
+        hyp = []
+        ref = []
+        h_edits = []
         for edits in hyp_edits.childNodes:
             edit_list = edits.data.split()
             for edit in edit_list:
@@ -55,10 +58,7 @@ def align_sentence_tercom(mt_sentence: str, pe_sentence: str, edits: List[str]) 
         if edit in [TercomEdit.CORRECT, TercomEdit.SUBSTITUTION]:
             if edit == TercomEdit.CORRECT:
                 # Sanity check
-                if (
-                    mt_sentence[mt_idx].lower() !=
-                    pe_sentence[pe_idx].lower()
-                ):
+                if mt_sentence[mt_idx].lower() != pe_sentence[pe_idx].lower():
                     raise Exception(
                         f"Reading Tercom xml failed, {mt_sentence[mt_idx].lower()} != {pe_sentence[pe_idx].lower()}"
                     )
