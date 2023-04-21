@@ -1,3 +1,43 @@
+[build-system]
+requires = ["setuptools>=60.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "divemt"
+description = "Post-editing effectiveness for typologically-diverse languages"
+readme = "README.md"
+license = {text = "GPLv3"}
+authors = [
+  {name = "Gabriele Sarti", email = "g.sarti@rug.nl"},
+]
+version = "0.2.0"
+requires-python = ">=3.8"
+# TODO: setup versions, add [project.optional-dependencies] for tests
+dependencies = [
+    "numpy<1.19.5",  # as simalign is not compatible with numpy >=1.20.0 (np.int is deprecated), 1.19.5 vulnerable
+    "pandas",
+    "sacrebleu",
+    "Levenshtein",
+    "stanza",
+    "simalign",
+    "strenum",
+    "sentencepiece",
+    "tqdm",
+    "black",
+    "flake8",
+    "isort",
+    "pytest",
+    "ruff",
+]
+
+[project.urls]
+homepage = "https://github.com/gsarti/divemt"
+
+# https://stackoverflow.com/questions/72294299/multiple-top-level-packages-discovered-in-a-flat-layout
+[tool.setuptools]
+py-modules = ["divemt"]
+
+
 [tool.black]
 # https://github.com/psf/black
 target-version = ["py38"]
