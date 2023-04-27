@@ -3,13 +3,16 @@ import logging
 import subprocess
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from itertools import groupby
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Set, Generator
 from xml.sax.saxutils import escape
 
+import numpy as np
 from simalign import SentenceAligner
 from strenum import StrEnum
 from tqdm import tqdm
+import Levenshtein as lev
 
 from .parse_utils import clear_nlp_cache, tokenize
 from .wmt22qe_utils import align_sentence_tercom, parse_tercom_xml_file
@@ -402,7 +405,22 @@ class WMT22QETagger(QETagger):
         return src_tags, mt_tags
 
 
+class NameTBDGeneralTags(StrEnum):
+    OK = 'OK'
+
+    BAD_SUBSTITUTION = 'BAD-SUB'
+    BAD_DELETION_RIGHT = 'BAD-DEL-R'  # smth deleted on the right side of this token
+    BAD_DELETION_LEFT = 'BAD-DEL-L'  # smth deleted on the left side of this token
+    BAD_INSERTION = 'BAD-INS'  # 1:n
+    BAD_SHIFTING = 'BAD-SHF'  # change words order n:m with hight threshold
+
+    BAD_CONTRACTION = 'BAD-CON'  # 1:n
+    BAD_EXPANSION = 'BAD-EXP'
+
+
 class NameTBDTagger(QETagger):
+
+    ID = "tbd_qe"
 
     def __init__(
         self,
@@ -429,7 +447,7 @@ class NameTBDTagger(QETagger):
         mt_tokens: List[List[str]],
         pe_tokens: List[List[str]],
         langs: List[str],
-    ) -> List[Tuple[int, int]]:
+    ) -> List[List[Tuple[int, int]]]:
         return [
             self.aligner.get_word_aligns(mt_tok, pe_tok)["inter"]
             for mt_tok, pe_tok in tqdm(
@@ -438,12 +456,63 @@ class NameTBDTagger(QETagger):
         ]
 
     @staticmethod
+    def _group_by_node(alignments: List[Tuple[Optional[int], Optional[int]]], by_start_node: bool = True, sort: bool = False) -> Generator[Tuple[int, List[int]], None, None]:
+        """Yield a node id and a list of connected nodes."""
+        _by_index = 0 if by_start_node else 1
+        if sort:
+            alignments = sorted(alignments, key=lambda x: x[_by_index] if x[_by_index] is not None else -1)
+        for start_node, connected_alignments in groupby(alignments, lambda x: x[_by_index]):
+            yield start_node, [end_id if by_start_node else start_id for start_id, end_id in connected_alignments]
+
+    @staticmethod
+    def _detect_crossing_edges(mt_tokens: List[str], pe_tokens: List[str], alignments: List[Tuple[Optional[int], Optional[int]]]) -> List[bool]:
+        """Detect crossing edges in the alignments. Return List of clusters of nodes that are connected."""
+        # TODO: optimize from n^2 to n as 2 pointers
+        shifted_mt_mask = [False] * len(mt_tokens)
+
+        for i in range(len(alignments)):
+            for j in range(i + 1, len(alignments)):
+                edge_1, edge_2 = alignments[i], alignments[j]
+
+                # skip if one of the edges is None
+                if edge_1[0] is None or edge_1[1] is None or edge_2[0] is None or edge_2[1] is None:
+                    continue
+
+                # skip if starting same node
+                if edge_1[0] == edge_2[0]:
+                    continue
+
+                assert edge_1[0] < edge_2[0], "Alignments have to be are sorted by mt"
+
+                # Check if crossing edges
+                if edge_1[0] < edge_2[0] and edge_1[1] > edge_2[1]:
+                    # mark the mt token as shifted
+                    shifted_mt_mask[edge_1[0]] = True
+                    shifted_mt_mask[edge_2[0]] = True
+
+        return shifted_mt_mask
+
+    @staticmethod
+    def _lev_similarity(mt_tok: str, pe_tok: str) -> float:
+        """Calculate Lev similarity between two tokens in [0, 1] range."""
+        if mt_tok == pe_tok:
+            return 1.0
+
+        # calculate similarity using Lev distance
+        return lev.ratio(mt_tok, pe_tok)
+
+    @staticmethod
     def tags_from_edits(
         mt_tokens: List[List[str]],
         pe_tokens: List[List[str]],
-        alignments: List[List[Tuple[int, int]]],
-    ) -> List[List[str]]:
+        mt_pe_alignments: List[List[Tuple[int, int]]],
+        mt_tokens_embeddings: Optional[List[List[np.ndarray]]] = None,
+        pe_tokens_embeddings: Optional[List[List[np.ndarray]]] = None,
+        threshold: float = 0.5,
+    ) -> List[List[Set[str]]]:
         """ Produce tags on MT tokens from edits found in the PE tokens. """
+        # TODO: check. now - if embeddings are not provided, use Lev distance
+        # TODO: update docs with ERRORS approach rather than EDITS
         # 1:1 match: OK if same, SUB if different
         # 1:n match:
         # - Find highest match for 1 in n (lexical, LaBSE if not found)
@@ -461,16 +530,118 @@ class NameTBDTagger(QETagger):
         # - If all matches are < threshold, skip and continue
         # - Else assign OK if same, SUB if different, remove from available m matches
         # If in a block with multiple crossing alignments (with blocks named A, B, ...):
-        # - Swapped pair A, B -> B, A: Both blocks recive SHF
-        # - For n > 2, all blocks changing relative position recive SHF, others don't
-        raise NotImplementedError()
+        # - Swapped pair A, B -> B, A: Both blocks receive SHF
+        # - For n > 2, all blocks changing relative position receive SHF, others don't
+
+        mt_tags = []
+        for mt_tok, pe_tok, mt_pe_align in tqdm(zip(mt_tokens, pe_tokens, mt_pe_alignments), desc="Tagging MT", total=len(mt_tokens)):
+
+            mt_sent_tags: List[Set[str]] = [set() for _ in range(len(mt_tok))]
+
+            # clear 1-n and n-1 nodes with low threshold
+            # e.g. if 1-n or n-1 have same token or high similarity, remove low similarity as deletions/insertions
+            aligns_remove_1_to_n, aligns_remove_n_to_1 = set(), set()
+            # 1-n match
+            for mt_node_id, connected_pe_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=True, sort=False):
+                if mt_node_id is not None and len(connected_pe_nodes_ids) > 1:
+                    pe_similarity = [
+                        (pe_node_id, NameTBDTagger._lev_similarity(mt_tok[mt_node_id], pe_tok[pe_node_id]))
+                        for pe_node_id in connected_pe_nodes_ids
+                        if pe_node_id is not None
+                    ]
+                    if all(sim < threshold for _, sim in pe_similarity):
+                        continue
+                    if all(sim > threshold for _, sim in pe_similarity):
+                        continue
+                    aligns_remove_1_to_n.update([
+                        (mt_node_id, pe_node_id)
+                        for pe_node_id, sim in pe_similarity
+                        if sim < threshold
+                    ])
+            # remove selected aligns and add None connected nodes instead
+            mt_pe_align = [(None, align[1]) if align in aligns_remove_1_to_n else align for align in mt_pe_align]
+            # n-1 match
+            for pe_node_id, connected_mt_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=False, sort=True):
+                if pe_node_id is not None and len(connected_mt_nodes_ids) > 1:
+                    mt_similarity = [
+                        (mt_node_id, NameTBDTagger._lev_similarity(mt_tok[mt_node_id], pe_tok[pe_node_id]))
+                        for mt_node_id in connected_mt_nodes_ids
+                        if mt_node_id is not None
+                    ]
+                    if all(sim < threshold for _, sim in mt_similarity):
+                        continue
+                    if all(sim > threshold for _, sim in mt_similarity):
+                        continue
+                    aligns_remove_n_to_1.update([
+                        (mt_node_id, pe_node_id)
+                        for mt_node_id, sim in mt_similarity
+                        if sim < threshold
+                    ])
+            # remove selected aligns and add None connected nodes instead
+            mt_pe_align = [(align[0], None) if align in aligns_remove_n_to_1 else align for align in mt_pe_align]
+
+            # Solve all n-1: setup expansions tags and solve n-1 matches < threshold as smth+insertion
+            # TODO: check with threshold, now doing without threshold
+            for pe_node_id, connected_mt_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=False, sort=True):
+                if pe_node_id is not None and len(connected_mt_nodes_ids) > 1:
+                    # expansion, mark related mt nodes
+                    for mt_node_id in connected_mt_nodes_ids:
+                        if mt_node_id is not None:
+                            mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_EXPANSION.value)
+
+            # Solve al deletions, add deletion tags on left and right sides
+            mt_position = 0
+            for mt_node_id, connected_pe_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=True, sort=False):
+                if mt_node_id is None:
+                    # deleted word error, mark left and right modes
+                    if 0 <= mt_position - 1 < len(mt_sent_tags):
+                        mt_sent_tags[mt_position - 1].add(NameTBDGeneralTags.BAD_DELETION_RIGHT.value)
+                    if mt_position < len(mt_sent_tags):
+                        mt_sent_tags[mt_position].add(NameTBDGeneralTags.BAD_DELETION_LEFT.value)
+                else:
+                    mt_position += 1
+            # clear all (None, i) to not mess grouping
+            mt_pe_align = [align for align in mt_pe_align if align[0] is not None]
+
+            # Solve all 1-n matches
+            for mt_node_id, connected_pe_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=True, sort=True):
+                print(mt_node_id, ' -> ', connected_pe_nodes_ids, '\t\tmt_position=', mt_position)
+                assert mt_node_id is not None, "Already should be filtered all (None, smth) cases"
+                if NameTBDGeneralTags.BAD_EXPANSION.value in mt_sent_tags[mt_node_id]:
+                    continue  # TODO: check with gabrielle the priority for EXPANSION and CONTRACTION
+                if len(connected_pe_nodes_ids) > 1:
+                    # contraction, mark the node
+                    mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_CONTRACTION.value)
+                elif connected_pe_nodes_ids[0] is None:
+                    # insertion, mark the node
+                    mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_INSERTION.value)
+                elif mt_tok[mt_node_id] != pe_tok[connected_pe_nodes_ids[0]]:
+                    # substitution, mark the node
+                    mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_SUBSTITUTION.value)
+                else:
+                    # OK, mark the node
+                    mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.OK.value)
+
+            # Add shifted tags if so
+            for mt_node_id, mask in enumerate(NameTBDTagger._detect_crossing_edges(mt_tok, pe_tok, mt_pe_align)):
+                if mask:
+                    mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_SHIFTING.value)
+
+            # Save tags for this sentence
+            mt_tags.append(mt_sent_tags)
+
+        # Basic sanity check
+        assert all(
+            [len(mt_sent_tokens) == len(mt_sent_tags) for mt_sent_tokens, mt_sent_tags in zip(mt_tokens, mt_tags)]
+        ), "MT tags creation failed, number of tokens and tags do not match"
+        return mt_tags
 
     @staticmethod
     def tags_to_source(
         src_tokens: List[List[str]],
         mt_tokens: List[List[str]],
-        alignments: List[List[Tuple[int, int]]],
-        mt_tags: List[List[str]],
+        src_mt_alignments: List[List[Tuple[int, int]]],
+        mt_tags: List[List[Set[str]]],
     ) -> List[List[str]]:
         """ Propagate tags from MT to source. """
         # 1:1 match: copy tags from MT
@@ -484,3 +655,23 @@ class NameTBDTagger(QETagger):
         # - If all matches are < threshold, ignore and continue
         # - Copy tags from top match in MT and ignore other matches
         raise NotImplementedError()
+
+    def generate_tags(
+        self,
+        srcs: List[str],
+        mts: List[str],
+        pes: List[str],
+        src_langs: Union[str, List[Set[str]]],
+        tgt_langs: Union[str, List[Set[str]]],
+    ) -> Tuple[List[str], List[str]]:
+        src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
+        mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
+        pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
+        src_mt_alignments = self.align_source_mt(src_tokens, mt_tokens, src_langs, tgt_langs)
+        mt_pe_alignments = self.align_mt_pe(mt_tokens, pe_tokens, tgt_langs)
+        mt_tags = self.tags_from_edits(mt_tokens, pe_tokens, mt_pe_alignments)
+        src_tags = self.tags_to_source(
+            src_tokens, pe_tokens, src_mt_alignments, mt_tags
+        )
+        clear_nlp_cache()
+        return src_tags, mt_tags

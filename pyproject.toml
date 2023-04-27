@@ -22,6 +22,7 @@ dependencies = [
     "simalign",
     "strenum",
     "sentencepiece",
+    "sentence-transformers",  # for LaBSE
     "tqdm",
     "black",
     "flake8",
