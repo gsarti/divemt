@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, Set, Generator
+from typing import List, Optional, Tuple, Union, Set, Generator, Any
 from xml.sax.saxutils import escape
 
 import numpy as np
@@ -20,6 +20,9 @@ from .wmt22qe_utils import align_sentence_tercom, parse_tercom_xml_file
 logger = logging.getLogger(__name__)
 
 
+TTag = Union[str, Set[str]]
+
+
 class QETagger(ABC):
     """An abstract class to produce quality estimation tags from src-mt-pe triplets."""
 
@@ -29,7 +32,7 @@ class QETagger(ABC):
         self,
         src_tokens: List[List[str]],
         mt_tokens: List[List[str]],
-        **align_source_mt_kwargs,
+        **align_source_mt_kwargs: Any,
     ) -> List[List[Tuple[int, int]]]:
         """Align source and machine translation tokens."""
         raise NotImplementedError(f"{self.__class__.__name__} does not implement align_source_mt()")
@@ -38,7 +41,7 @@ class QETagger(ABC):
         self,
         src_tokens: List[List[str]],
         pe_tokens: List[List[str]],
-        **align_source_pe_kwargs,
+        **align_source_pe_kwargs: Any,
     ) -> List[List[Tuple[int, int]]]:
         """Align source and post-edited tokens."""
         raise NotImplementedError(f"{self.__class__.__name__} does not implement align_source_pe()")
@@ -48,7 +51,7 @@ class QETagger(ABC):
         self,
         mt_tokens: List[List[str]],
         pe_tokens: List[List[str]],
-        **align_mt_pe_kwargs,
+        **align_mt_pe_kwargs: Any,
     ) -> List[List[Tuple[int, int]]]:
         """Align machine translation and post-editing tokens."""
         pass
@@ -59,8 +62,8 @@ class QETagger(ABC):
         mt_tokens: List[List[str]],
         pe_tokens: List[List[str]],
         alignments: List[List[Tuple[int, int]]],
-        **mt_tagging_kwargs,
-    ) -> List[List[str]]:
+        **mt_tagging_kwargs: Any,
+    ) -> List[List[TTag]]:
         """Produce tags on MT tokens from edits found in the PE tokens."""
         pass
 
@@ -69,8 +72,8 @@ class QETagger(ABC):
     def tags_to_source(
         src_tokens: List[List[str]],
         tgt_tokens: List[List[str]],
-        **src_tagging_kwargs,
-    ) -> List[List[str]]:
+        **src_tagging_kwargs: Any,
+    ) -> List[List[TTag]]:
         """Propagate tags from MT to source."""
         pass
 
@@ -93,7 +96,7 @@ class QETagger(ABC):
         pes: List[str],
         src_langs: Union[str, List[str]],
         tgt_langs: Union[str, List[str]],
-    ) -> Tuple[List[str], List[str]]:
+    ) -> Tuple[List[TTag], List[TTag]]:
         """Generate word-level quality estimation tags from source-mt-pe triplets.
 
         Args:
@@ -111,7 +114,7 @@ class QETagger(ABC):
                 (one per machine translation).
 
         Returns:
-            `Tuple[List[str], List[str]]`: A tuple containing the lists of quality tags for all source and the machine
+            `Tuple[List[TTag], List[TTag]]`: A tuple containing the lists of quality tags for all source and the machine
             translation sentence, respectively.
         """
         pass
@@ -230,7 +233,7 @@ class WMT22QETagger(QETagger):
         alignments: List[List[Tuple[int, int]]],
         use_gaps: bool = False,
         omissions: str = OmissionRule.RIGHT.value,
-    ) -> List[List[str]]:
+    ) -> List[List[TTag]]:
         """Produce tags on MT tokens from edits found in the PE tokens."""
         if use_gaps:
             omissions = OmissionRule.NONE.value
@@ -324,7 +327,7 @@ class WMT22QETagger(QETagger):
         src_pe_alignments: List[List[Tuple[int, int]]],
         mt_pe_alignments: List[List[Tuple[int, int]]],
         fluency_rule: str = FluencyRule.NORMAL.value,
-    ) -> List[List[str]]:
+    ) -> List[List[TTag]]:
         """Propagate tags from MT to source."""
         # Reorganize source-target alignments as a dict
         pe2source = []
@@ -386,7 +389,7 @@ class WMT22QETagger(QETagger):
         use_gaps: bool = False,
         omissions: str = OmissionRule.RIGHT.value,
         fluency_rule: str = FluencyRule.NORMAL.value,
-    ) -> Tuple[List[List[str]], List[List[str]]]:
+    ) -> Tuple[List[List[TTag]], List[List[TTag]]]:
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
@@ -406,20 +409,21 @@ class WMT22QETagger(QETagger):
 
 
 class NameTBDGeneralTags(StrEnum):
-    OK = 'OK'
+    """Error types tags for NameTBD."""
+    OK = 'OK'  # 1:1 - the MT uses the same single word as the PE
+    BAD_SUBSTITUTION = 'BAD-SUB'  # 1:1 - the MT uses a different single word than the PE
 
-    BAD_SUBSTITUTION = 'BAD-SUB'
-    BAD_DELETION_RIGHT = 'BAD-DEL-R'  # smth deleted on the right side of this token
-    BAD_DELETION_LEFT = 'BAD-DEL-L'  # smth deleted on the left side of this token
-    BAD_INSERTION = 'BAD-INS'  # 1:n
-    BAD_SHIFTING = 'BAD-SHF'  # change words order n:m with hight threshold
+    BAD_DELETION_RIGHT = 'BAD-DEL-R'  # None:1 - the MT does not have a word existed in PE, deletion on the right
+    BAD_DELETION_LEFT = 'BAD-DEL-L'  # None:1 - the MT does not have a word existed in PE, deletion on the left
+    BAD_INSERTION = 'BAD-INS'  # 1:None - the MT wrongly inserted a words that is not in the PE
 
-    BAD_CONTRACTION = 'BAD-CON'  # 1:n
-    BAD_EXPANSION = 'BAD-EXP'
+    BAD_SHIFTING = 'BAD-SHF'  # for any number of tokens - detect crossing edges
+
+    BAD_CONTRACTION = 'BAD-CON'  # 1:n - the MT uses a single word instead of multiple words in the PE
+    BAD_EXPANSION = 'BAD-EXP'  # n:1 - the MT uses a multiple words instead of one in the PE
 
 
 class NameTBDTagger(QETagger):
-
     ID = "tbd_qe"
 
     def __init__(
@@ -466,7 +470,7 @@ class NameTBDTagger(QETagger):
 
     @staticmethod
     def _detect_crossing_edges(mt_tokens: List[str], pe_tokens: List[str], alignments: List[Tuple[Optional[int], Optional[int]]]) -> List[bool]:
-        """Detect crossing edges in the alignments. Return List of clusters of nodes that are connected."""
+        """Detect crossing edges in the alignments. Return mask list of nodes that cross some other node."""
         # TODO: optimize from n^2 to n as 2 pointers
         shifted_mt_mask = [False] * len(mt_tokens)
 
@@ -509,41 +513,49 @@ class NameTBDTagger(QETagger):
         mt_tokens_embeddings: Optional[List[List[np.ndarray]]] = None,
         pe_tokens_embeddings: Optional[List[List[np.ndarray]]] = None,
         threshold: float = 0.5,
-    ) -> List[List[Set[str]]]:
-        """ Produce tags on MT tokens from edits found in the PE tokens. """
-        # TODO: check. now - if embeddings are not provided, use Lev distance
-        # TODO: update docs with ERRORS approach rather than EDITS
-        # 1:1 match: OK if same, SUB if different
-        # 1:n match:
-        # - Find highest match for 1 in n (lexical, LaBSE if not found)
-        # - If all matches are < threshold, tag as EXP (expansion)
-        # - Else, assign OK if same, SUB if different
-        # - If match preceded by some of the n, assign also INS to match
-        # - If match followed by some of the n, push an INS tag to the next token
-        # n:1 match:
-        # - Find highest match for 1 in n (lexical, LaBSE if not found)
-        # - If all matches are < threshold, tag as CON (contraction)
-        # - Else, assign OK if same, SUB if different
-        # - All n different than match are assigned DEL
-        # n:m match:
-        # - For each 1 in n, find highest match for 1 in m (lexical, LaBSE if not found, from highest score to lowest)
-        # - If all matches are < threshold, skip and continue
-        # - Else assign OK if same, SUB if different, remove from available m matches
-        # If in a block with multiple crossing alignments (with blocks named A, B, ...):
-        # - Swapped pair A, B -> B, A: Both blocks receive SHF
-        # - For n > 2, all blocks changing relative position receive SHF, others don't
+    ) -> List[List[TTag]]:
+        """ Produce tags on MT tokens from edits found in the PE tokens.
 
-        mt_tags = []
+        Note: The tags indicate the type of error particular MT token is affected by.
+
+        The following situations are considered:
+            1:1 match: OK if same, SUB if different
+            1:n match:
+            - Obtain similarity between 1 and n (lexical, LaBSE if not found)
+            - If all matches are <threshold or all >threshold, tag as CON (contraction)
+            - Else, tackle the highest match as 1:1 (OK/SUB) and the rest as None:1 (deletions)
+            n:1 match:
+            - Obtain similarity between n and 1 (lexical, LaBSE if not found)
+            - If all matches are <threshold or all >threshold, tag as EXP (expansion)
+            - Else, tackle the highest match as 1:1 (OK/SUB) and the rest as 1:None (insertions)
+            n:m match:
+            - Prioritize n:1 matches with the EXP (expansion) tag
+            - Clear all None:1 cases
+            - Consider all n:m as 1:m cases, if current MT token is not tagged as EXP
+            shifting:
+            - First, clear all None:1 and 1:None cases - deleted and inserted words can't be shifted
+            - Then for all edges check if they cross with any other edge
+            - If they do, mark both nodes (2 edges starting node) in MT as SHF (shifted)
+            - TODO:
+                If in a block with multiple crossing alignments (with blocks named A, B, ...):
+                - Swapped pair A, B -> B, A: Both blocks receive SHF
+                - For n > 2, all blocks changing relative position receive SHF, others don't
+        """
+        # TODO: check. now - if embeddings are not provided, use Lev distance
+
+        mt_tags: List[List[Set[str]]] = []
+
         for mt_tok, pe_tok, mt_pe_align in tqdm(zip(mt_tokens, pe_tokens, mt_pe_alignments), desc="Tagging MT", total=len(mt_tokens)):
 
             mt_sent_tags: List[Set[str]] = [set() for _ in range(len(mt_tok))]
 
             # clear 1-n and n-1 nodes with low threshold
-            # e.g. if 1-n or n-1 have same token or high similarity, remove low similarity as deletions/insertions
+            # e.g. if 1-n or n-1 have same token or high similarity, remove low similarity as deletions/insertions (None:1 and 1:None)
             aligns_remove_1_to_n, aligns_remove_n_to_1 = set(), set()
             # 1-n match
             for mt_node_id, connected_pe_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=True, sort=False):
                 if mt_node_id is not None and len(connected_pe_nodes_ids) > 1:
+                    # TODO: check alignments lib to have sim
                     pe_similarity = [
                         (pe_node_id, NameTBDTagger._lev_similarity(mt_tok[mt_node_id], pe_tok[pe_node_id]))
                         for pe_node_id in connected_pe_nodes_ids
@@ -581,7 +593,6 @@ class NameTBDTagger(QETagger):
             mt_pe_align = [(align[0], None) if align in aligns_remove_n_to_1 else align for align in mt_pe_align]
 
             # Solve all n-1: setup expansions tags and solve n-1 matches < threshold as smth+insertion
-            # TODO: check with threshold, now doing without threshold
             for pe_node_id, connected_mt_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=False, sort=True):
                 if pe_node_id is not None and len(connected_mt_nodes_ids) > 1:
                     # expansion, mark related mt nodes
@@ -589,7 +600,7 @@ class NameTBDTagger(QETagger):
                         if mt_node_id is not None:
                             mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_EXPANSION.value)
 
-            # Solve al deletions, add deletion tags on left and right sides
+            # Solve all deletions, add deletion tags on left and right sides
             mt_position = 0
             for mt_node_id, connected_pe_nodes_ids in NameTBDTagger._group_by_node(mt_pe_align, by_start_node=True, sort=False):
                 if mt_node_id is None:
@@ -608,7 +619,7 @@ class NameTBDTagger(QETagger):
                 print(mt_node_id, ' -> ', connected_pe_nodes_ids, '\t\tmt_position=', mt_position)
                 assert mt_node_id is not None, "Already should be filtered all (None, smth) cases"
                 if NameTBDGeneralTags.BAD_EXPANSION.value in mt_sent_tags[mt_node_id]:
-                    continue  # TODO: check with gabrielle the priority for EXPANSION and CONTRACTION
+                    continue
                 if len(connected_pe_nodes_ids) > 1:
                     # contraction, mark the node
                     mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_CONTRACTION.value)
@@ -642,18 +653,23 @@ class NameTBDTagger(QETagger):
         mt_tokens: List[List[str]],
         src_mt_alignments: List[List[Tuple[int, int]]],
         mt_tags: List[List[Set[str]]],
-    ) -> List[List[str]]:
-        """ Propagate tags from MT to source. """
-        # 1:1 match: copy tags from MT
-        # 1:n match:
-        # - Find highest match for 1 in n (lexical, LaBSE if not found)
-        # - If all matches are < threshold, TBD
-        # - Else, copy tags from top match in MT and ignore other matches
-        # n:1 match: copy tags from 1 to all n
-        # n:m match:
-        # - For each 1 in n, find highest match for 1 in m (lexical, LaBSE if not found)
-        # - If all matches are < threshold, ignore and continue
-        # - Copy tags from top match in MT and ignore other matches
+    ) -> List[List[TTag]]:
+        """ Propagate tags from MT to source.
+
+        # TODO: update docstring with the final logic
+        The following cases are considered:
+            1:1 match: copy tags from MT
+            1:n match:
+            - Find highest match for 1 in n (lexical, LaBSE if not found)
+            - If all matches are <threshold or all >threshold, TBD
+            - Else, copy tags from top match in MT and ignore other matches
+            n:1 match: copy tags from 1 to all n
+            n:m match:
+            - For each 1 in n, find highest match for 1 in m (lexical, LaBSE if not found)
+            - If all matches are <threshold or all >threshold, ignore and continue
+            - Copy tags from top match in MT and ignore other matches
+        """
+
         raise NotImplementedError()
 
     def generate_tags(
@@ -663,7 +679,7 @@ class NameTBDTagger(QETagger):
         pes: List[str],
         src_langs: Union[str, List[Set[str]]],
         tgt_langs: Union[str, List[Set[str]]],
-    ) -> Tuple[List[str], List[str]]:
+    ) -> Tuple[List[TTag], List[TTag]]:
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
