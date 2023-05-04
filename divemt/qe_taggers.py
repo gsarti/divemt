@@ -549,28 +549,28 @@ class NameTBDTagger(QETagger):
             # 1-n match
             for mt_node_id, connected_pe_nodes_ids, connected_pe_similarity in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=True, sort=True):
                 if mt_node_id is not None and len(connected_pe_nodes_ids) > 1:
-                    if all(sim < threshold for sim in connected_pe_similarity):
+                    if all(sim < threshold for sim in connected_pe_similarity if sim is not None):
                         continue
-                    if all(sim > threshold for sim in connected_pe_similarity):
+                    if all(sim > threshold for sim in connected_pe_similarity if sim is not None):
                         continue
                     aligns_remove_1_to_n.update([
                         (mt_node_id, pe_node_id, sim)
                         for pe_node_id, sim in zip(connected_pe_nodes_ids, connected_pe_similarity)
-                        if sim < threshold
+                        if pe_node_id is not None and sim is not None and sim < threshold
                     ])
             # remove selected aligns and add None connected nodes instead
             mt_pe_sent_align = [(None, align[1], None) if align in aligns_remove_1_to_n else align for align in mt_pe_sent_align]
             # n-1 match
             for pe_node_id, connected_mt_nodes_ids, connected_mt_similarity in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=False, sort=True):
                 if pe_node_id is not None and len(connected_mt_nodes_ids) > 1:
-                    if all(sim < threshold for sim in connected_mt_similarity):
+                    if all(sim < threshold for sim in connected_mt_similarity if sim is not None):
                         continue
-                    if all(sim > threshold for sim in connected_mt_similarity):
+                    if all(sim > threshold for sim in connected_mt_similarity if sim is not None):
                         continue
                     aligns_remove_n_to_1.update([
                         (mt_node_id, pe_node_id, sim)
                         for mt_node_id, sim in zip(connected_mt_nodes_ids, connected_mt_similarity)
-                        if sim < threshold
+                        if mt_node_id is not None and sim is not None and sim < threshold
                     ])
             # remove selected aligns and add None connected nodes instead
             mt_pe_sent_align = [(align[0], None, None) if align in aligns_remove_n_to_1 else align for align in mt_pe_sent_align]
