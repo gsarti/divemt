@@ -1,8 +1,12 @@
 import re
+import sys
 from typing import List, Tuple
 from xml.dom.minidom import parse
 
-from strenum import StrEnum
+if sys.version_info < (3, 11):
+    from strenum import StrEnum
+else:
+    from enum import StrEnum
 
 
 class TercomEdit(StrEnum):
