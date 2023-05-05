@@ -9,6 +9,8 @@ data/raw/vie/*/*
 
 tmp/*
 outputs/*
+cache/
+.cache/
 
 .idea/
 
