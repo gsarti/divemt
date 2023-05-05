@@ -268,11 +268,13 @@ class SentenceAligner(object):
                 for ext in self.matching_methods:
                     if all_mats[ext][i, j] > 0:
                         if self.token_type == "bpe":
+                            # new: add similarity as third item
                             if self.return_similarity:
                                 aligns[ext].add((l1_b2w_map[i], l2_b2w_map[j], words_similarity[l1_b2w_map[i], l2_b2w_map[j]]))
                             else:
                                 aligns[ext].add((l1_b2w_map[i], l2_b2w_map[j]))
                         else:
+                            # new: add similarity as third item
                             if self.return_similarity:
                                 aligns[ext].add((i, j, sim[i, j]))
                             else:
