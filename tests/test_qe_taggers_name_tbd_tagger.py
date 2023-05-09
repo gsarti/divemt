@@ -8,8 +8,8 @@ if sys.version_info < (3, 11):
 else:
     from enum import StrEnum
 
-from divemt.qe_taggers import NameTBDGeneralTags as Tags
-from divemt.qe_taggers import NameTBDTagger
+from divemt.qe_taggers.name_tbd_tagger import NameTBDGeneralTags as Tags
+from divemt.qe_taggers.name_tbd_tagger import NameTBDTagger
 
 tagger = NameTBDTagger()
 
