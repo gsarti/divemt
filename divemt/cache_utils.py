@@ -117,7 +117,6 @@ class CacheDecorator:
                 with open(cache_file, "rb") as f:
                     return pickle.load(f)
             else:
-                print(len(args), len(kwargs.items()))
                 result = function(*args, **kwargs)
                 print(f"CREATE CACHE: {cache_file}")
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
