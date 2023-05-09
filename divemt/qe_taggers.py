@@ -10,6 +10,9 @@ from typing import List, Optional, Tuple, Union, Set, Generator, Any
 from xml.sax.saxutils import escape
 
 from simalign import SentenceAligner
+
+from .cache_utils import CacheDecorator
+
 if sys.version_info < (3, 11):
     from strenum import StrEnum
 else:
@@ -397,8 +400,10 @@ class WMT22QETagger(QETagger):
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
+
         src_pe_alignments = self.align_source_pe(src_tokens, pe_tokens, tgt_langs)
         mt_pe_alignments = self.align_mt_pe(mt_tokens, pe_tokens)
+
         mt_tags = self.tags_from_edits(mt_tokens, pe_tokens, mt_pe_alignments, use_gaps, omissions)
         src_tags = self.tags_to_source(
             src_tokens,
@@ -408,7 +413,9 @@ class WMT22QETagger(QETagger):
             mt_pe_alignments,
             fluency_rule,
         )
+
         clear_nlp_cache()
+
         return src_tags, mt_tags
 
 
@@ -436,6 +443,27 @@ class NameTBDTagger(QETagger):
     ):
         self.aligner = aligner if aligner else CustomSentenceAligner(model="bert", token_type="bpe", matching_methods="mai", return_similarity="avg")
 
+    def _fill_deleted_inserted_tokens(self, len_from: int, len_to: int, alignments: List[TAlignment]) -> List[TAlignment]:
+        """As aligner provides only actual alignments, add required (None, i), (i, None) tokens"""
+        new_alignments: List[TAlignment] = []
+
+        # Add (i, None) in correct place (ordered by i)
+        current_alignment_index = 0
+        for align in alignments:
+            # Add missing index pairs with None
+            while current_alignment_index < align[0]:
+                new_alignments.append((current_alignment_index, None))
+                current_alignment_index += 1
+
+            # Add the current alignment pair
+            new_alignments.append(align)
+            current_alignment_index += 1
+
+        raise NotImplementedError()
+
+        return new_alignments
+
+    # @CacheDecorator()
     def align_source_mt(
         self,
         src_tokens: List[List[str]],
@@ -450,6 +478,7 @@ class NameTBDTagger(QETagger):
             )
         ]
 
+    # @CacheDecorator()
     def align_mt_pe(
         self,
         mt_tokens: List[List[str]],
@@ -701,11 +730,15 @@ class NameTBDTagger(QETagger):
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
+
         src_mt_alignments = self.align_source_mt(src_tokens, mt_tokens, src_langs, tgt_langs)
         mt_pe_alignments = self.align_mt_pe(mt_tokens, pe_tokens, tgt_langs)
+
         mt_tags = self.tags_from_edits(mt_tokens, pe_tokens, mt_pe_alignments)
         src_tags = self.tags_to_source(
             src_tokens, pe_tokens, src_mt_alignments, mt_tags
         )
+
         clear_nlp_cache()
+
         return src_tags, mt_tags

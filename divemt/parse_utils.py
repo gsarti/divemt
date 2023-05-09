@@ -20,7 +20,7 @@ from sacrebleu import sentence_bleu, sentence_chrf
 from .cer import cer
 from .tag_utils import clear_nlp_cache, texts2annotations, tokenize
 
-from .qe_taggers import QETagger, WMT22QETagger  # isort: skip  <- due to circular import with tag_utils
+from .qe_taggers import QETagger, WMT22QETagger, NameTBDTagger  # isort: skip  <- due to circular import with tag_utils
 
 logger = logging.getLogger(__name__)
 
@@ -356,7 +356,7 @@ def texts2qe(
         pe_texts["mt_text"].tolist(),
         pe_texts["tgt_text"].tolist(),
         "eng",
-        pe_texts.unit_id.str.split("-").map(lambda x: x[2]),
+        pe_texts.unit_id.str.split("-").map(lambda x: x[2]).tolist(),
     )
     pe_texts[f"src_{tagger.ID}"] = src_tags
     pe_texts[f"mt_{tagger.ID}"] = mt_tags
@@ -377,12 +377,12 @@ def parse_from_folder(
     add_extra_information: bool = False,
     add_annotations_information: bool = False,
     add_wmt22_quality_tags: bool = False,
+    add_name_tbd_quality_tags: bool = False,
     rounding: Optional[int] = None,
 ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
     """Parse all .per XML files in a folder and return a single dataframe containing all units."""
     metrics_list_dfs = [per2metrics(os.path.join(path, f)) for f in os.listdir(path) if f.endswith(".per")]
     metrics_df = pd.concat([df for df in metrics_list_dfs if df is not None], ignore_index=True)
-
     if (
         output_texts
         or add_edit_information
@@ -407,9 +407,12 @@ def parse_from_folder(
         if add_extra_information:
             metrics_df = metrics2extra(metrics_df)
         if add_annotations_information:
-            texts_df = texts2annotations(texts_df)
+            texts_df = texts2annotations(texts_df)  # TODO: make cache optional
         if add_wmt22_quality_tags:
             tagger = WMT22QETagger()
+            texts_df = texts2qe(texts_df, tagger)
+        if add_name_tbd_quality_tags:
+            tagger = NameTBDTagger()  # TODO: make cache optional
             texts_df = texts2qe(texts_df, tagger)
 
     if time_ordered:

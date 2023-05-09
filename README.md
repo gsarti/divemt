@@ -73,6 +73,7 @@ python scripts/preprocess.py \
 --add_extra \
 --add_annotations \
 --add_wmt22_quality_tags \
+--add_name_tbd_quality_tags \
 --output_single \
 --output_merged_subjects \
 --output_merged_languages

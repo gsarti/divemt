@@ -54,6 +54,7 @@ def preprocess(args: argparse.Namespace):
                     add_extra_information=args.add_extra,
                     add_annotations_information=args.add_annotations,
                     add_wmt22_quality_tags=args.add_wmt22_quality_tags,
+                    add_name_tbd_quality_tags=args.add_name_tbd_quality_tags,
                     rounding=args.rounding,
                 )
                 if args.output_texts:
@@ -182,6 +183,11 @@ if __name__ == "__main__":
         "--add_wmt22_quality_tags",
         action="store_true",
         help="Whether to add WMT22 quality tags to the text dataframe",
+    )
+    parser.add_argument(
+        "--add_name_tbd_quality_tags",
+        action="store_true",
+        help="Whether to add NameTBD quality tags to the text dataframe",
     )
     parser.add_argument(
         "--output_single",
