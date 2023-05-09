@@ -7,7 +7,7 @@ Custom changes:
 - fix typings
 - logger deleted
 """
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -20,21 +20,21 @@ except ImportError:
     nx = None
 import torch
 from transformers import (
-    BertModel,
-    BertTokenizer,
-    XLMModel,
-    XLMTokenizer,
-    RobertaModel,
-    RobertaTokenizer,
-    XLMRobertaModel,
-    XLMRobertaTokenizer,
     AutoConfig,
     AutoModel,
     AutoTokenizer,
+    BertModel,
+    BertTokenizer,
+    RobertaModel,
+    RobertaTokenizer,
+    XLMModel,
+    XLMRobertaModel,
+    XLMRobertaTokenizer,
+    XLMTokenizer,
 )
 
 
-class EmbeddingLoader(object):
+class EmbeddingLoader:
     def __init__(self, model: str = "bert-base-multilingual-cased", device=torch.device("cpu"), layer: int = 8):
         TR_Models = {
             "bert-base-uncased": (BertModel, BertTokenizer),
@@ -89,14 +89,16 @@ class EmbeddingLoader(object):
             return None
 
 
-class SentenceAligner(object):
+class SentenceAligner:
     def __init__(
         self,
         model: str = "bert",
         token_type: str = "bpe",
         distortion: float = 0.0,
         matching_methods: str = "mai",
-        return_similarity: Optional[str] = None,  # new: ["max", "avg"] type of average similarity for words from tokens
+        return_similarity: Optional[
+            str
+        ] = None,  # new: ["max", "avg"] type of average similarity for words from tokens
         device: str = "cpu",
         layer: int = 8,
     ):
@@ -145,14 +147,14 @@ class SentenceAligner(object):
         w2b_map.append([])
         for wlist in word_tokens_pair[0]:
             w2b_map[0].append([])
-            for x in wlist:
+            for _x in wlist:
                 w2b_map[0][-1].append(cnt)
                 cnt += 1
         cnt = 0
         w2b_map.append([])
         for wlist in word_tokens_pair[1]:
             w2b_map[1].append([])
-            for x in wlist:
+            for _x in wlist:
                 w2b_map[1][-1].append(cnt)
                 cnt += 1
 
@@ -270,7 +272,9 @@ class SentenceAligner(object):
                         if self.token_type == "bpe":
                             # new: add similarity as third item
                             if self.return_similarity:
-                                aligns[ext].add((l1_b2w_map[i], l2_b2w_map[j], words_similarity[l1_b2w_map[i], l2_b2w_map[j]]))
+                                aligns[ext].add(
+                                    (l1_b2w_map[i], l2_b2w_map[j], words_similarity[l1_b2w_map[i], l2_b2w_map[j]])
+                                )
                             else:
                                 aligns[ext].add((l1_b2w_map[i], l2_b2w_map[j]))
                         else:

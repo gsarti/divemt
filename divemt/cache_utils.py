@@ -11,10 +11,9 @@ import json
 import pickle
 from collections.abc import Collection
 from pathlib import Path
-from typing import Optional, Any, Dict, Callable
+from typing import Any, Callable, Dict, Optional
 
 import pandas as pd
-
 
 _VERSION = 0
 _EXCLUDE = "_hash_exclude_"
@@ -72,7 +71,7 @@ def _dataclass_dict(thing: object) -> Dict[str, Any]:
 
 def calc_obj_hash(obj: object) -> bytes:
     """Calculate hash of a single object"""
-    prefix = _VERSION.to_bytes(1, 'big')
+    prefix = _VERSION.to_bytes(1, "big")
     hash_object = hashlib.sha256()
     hash_object.update(_json_dumps(obj).encode("utf-8"))
     return prefix + hash_object.digest()
@@ -80,15 +79,15 @@ def calc_obj_hash(obj: object) -> bytes:
 
 def calc_args_hash(*args: Any, **kwargs: any) -> bytes:
     """Calculate hash of arguments to function"""
-    prefix = _VERSION.to_bytes(1, 'big')
+    prefix = _VERSION.to_bytes(1, "big")
     hash_object = hashlib.sha256()
     for arg in args:
-        if isinstance(arg, pd.DataFrame) or isinstance(arg, pd.Series):
+        if isinstance(arg, (pd.DataFrame, pd.Series)):
             hash_object.update(str(pd.util.hash_pandas_object(arg).sum()).encode("utf-8"))
         else:
             hash_object.update(_json_dumps(arg).encode("utf-8"))
     for key, value in kwargs.items():
-        if isinstance(value, pd.DataFrame) or isinstance(value, pd.Series):
+        if isinstance(value, (pd.DataFrame, pd.Series)):
             hash_object.update(key.encode("utf-8") + str(pd.util.hash_pandas_object(value).sum()).encode("utf-8"))
         else:
             hash_object.update(_json_dumps([key, value]).encode("utf-8"))

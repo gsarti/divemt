@@ -27,9 +27,7 @@ def preprocess(args: argparse.Namespace):
         for path in lang_output_paths.values():
             os.makedirs(path, exist_ok=True)
     if args.tasks is None:
-        tasks = {
-            lang: list({f.split("_")[1] for f in os.listdir(lang_source_paths[lang])}) for lang in args.languages
-        }
+        tasks = {lang: list({f.split("_")[1] for f in os.listdir(lang_source_paths[lang])}) for lang in args.languages}
     else:
         tasks = {lang: args.tasks for lang in args.languages}
     results_dict = {lang: {task: [] for task in tasks[lang]} for lang in args.languages}

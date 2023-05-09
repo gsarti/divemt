@@ -6,12 +6,10 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from itertools import groupby
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, Set, Generator, Any
+from typing import Any, Generator, List, Optional, Set, Tuple, Union
 from xml.sax.saxutils import escape
 
 from simalign import SentenceAligner
-
-from .cache_utils import CacheDecorator
 
 if sys.version_info < (3, 11):
     from strenum import StrEnum
@@ -121,8 +119,8 @@ class QETagger(ABC):
                 (one per machine translation).
 
         Returns:
-            `Tuple[List[TTag], List[TTag]]`: A tuple containing the lists of quality tags for all source and the machine
-            translation sentence, respectively.
+            `Tuple[List[TTag], List[TTag]]`: A tuple containing the lists of quality tags for all source and the
+            machine translation sentence, respectively.
         """
         pass
 
@@ -421,17 +419,18 @@ class WMT22QETagger(QETagger):
 
 class NameTBDGeneralTags(StrEnum):
     """Error types tags for NameTBD."""
-    OK = 'OK'  # 1:1 - the MT uses the same single word as the PE
-    BAD_SUBSTITUTION = 'BAD-SUB'  # 1:1 - the MT uses a different single word than the PE
 
-    BAD_DELETION_RIGHT = 'BAD-DEL-R'  # None:1 - the MT does not have a word existed in PE, deletion on the right
-    BAD_DELETION_LEFT = 'BAD-DEL-L'  # None:1 - the MT does not have a word existed in PE, deletion on the left
-    BAD_INSERTION = 'BAD-INS'  # 1:None - the MT wrongly inserted a words that is not in the PE
+    OK = "OK"  # 1:1 - the MT uses the same single word as the PE
+    BAD_SUBSTITUTION = "BAD-SUB"  # 1:1 - the MT uses a different single word than the PE
 
-    BAD_SHIFTING = 'BAD-SHF'  # for any number of tokens - detect crossing edges
+    BAD_DELETION_RIGHT = "BAD-DEL-R"  # None:1 - the MT does not have a word existed in PE, deletion on the right
+    BAD_DELETION_LEFT = "BAD-DEL-L"  # None:1 - the MT does not have a word existed in PE, deletion on the left
+    BAD_INSERTION = "BAD-INS"  # 1:None - the MT wrongly inserted a words that is not in the PE
 
-    BAD_CONTRACTION = 'BAD-CON'  # 1:n - the MT uses a single word instead of multiple words in the PE
-    BAD_EXPANSION = 'BAD-EXP'  # n:1 - the MT uses a multiple words instead of one in the PE
+    BAD_SHIFTING = "BAD-SHF"  # for any number of tokens - detect crossing edges
+
+    BAD_CONTRACTION = "BAD-CON"  # 1:n - the MT uses a single word instead of multiple words in the PE
+    BAD_EXPANSION = "BAD-EXP"  # n:1 - the MT uses a multiple words instead of one in the PE
 
 
 class NameTBDTagger(QETagger):
@@ -441,9 +440,15 @@ class NameTBDTagger(QETagger):
         self,
         aligner: Optional[CustomSentenceAligner] = None,
     ):
-        self.aligner = aligner if aligner else CustomSentenceAligner(model="bert", token_type="bpe", matching_methods="mai", return_similarity="avg")
+        self.aligner = (
+            aligner
+            if aligner
+            else CustomSentenceAligner(model="bert", token_type="bpe", matching_methods="mai", return_similarity="avg")
+        )
 
-    def _fill_deleted_inserted_tokens(self, len_from: int, len_to: int, alignments: List[TAlignment]) -> List[TAlignment]:
+    def _fill_deleted_inserted_tokens(
+        self, len_from: int, len_to: int, alignments: List[TAlignment]
+    ) -> List[TAlignment]:
         """As aligner provides only actual alignments, add required (None, i), (i, None) tokens"""
         new_alignments: List[TAlignment] = []
 
@@ -473,9 +478,7 @@ class NameTBDTagger(QETagger):
     ) -> List[List[TAlignment]]:
         return [
             self.aligner.get_word_aligns(src_tok, mt_tok)["inter"]
-            for src_tok, mt_tok in tqdm(
-                zip(src_tokens, mt_tokens), total=len(src_tokens), desc="Aligning src-mt"
-            )
+            for src_tok, mt_tok in tqdm(zip(src_tokens, mt_tokens), total=len(src_tokens), desc="Aligning src-mt")
         ]
 
     # @CacheDecorator()
@@ -487,23 +490,27 @@ class NameTBDTagger(QETagger):
     ) -> List[List[TAlignment]]:
         return [
             self.aligner.get_word_aligns(mt_tok, pe_tok)["inter"]
-            for mt_tok, pe_tok in tqdm(
-                zip(mt_tokens, pe_tokens), total=len(mt_tokens), desc="Aligning mt-pe"
-            )
+            for mt_tok, pe_tok in tqdm(zip(mt_tokens, pe_tokens), total=len(mt_tokens), desc="Aligning mt-pe")
         ]
 
     @staticmethod
-    def _group_by_node(alignments: List[Tuple[Optional[int], Optional[int]]], by_start_node: bool = True, sort: bool = False) -> Generator[Tuple[int, List[int], List[float]], None, None]:
+    def _group_by_node(
+        alignments: List[Tuple[Optional[int], Optional[int]]], by_start_node: bool = True, sort: bool = False
+    ) -> Generator[Tuple[int, List[int], List[float]], None, None]:
         """Yield a node id and a list of connected nodes."""
         _by_index = 0 if by_start_node else 1
         if sort:
             alignments = sorted(alignments, key=lambda x: x[_by_index] if x[_by_index] is not None else -1)
         for start_node, connected_alignments in groupby(alignments, lambda x: x[_by_index]):
             connected_alignments = list(connected_alignments)
-            yield start_node, [end_id if by_start_node else start_id for start_id, end_id, _ in connected_alignments], [similarity for _, _, similarity in connected_alignments]
+            yield start_node, [
+                end_id if by_start_node else start_id for start_id, end_id, _ in connected_alignments
+            ], [similarity for _, _, similarity in connected_alignments]
 
     @staticmethod
-    def _detect_crossing_edges(mt_tokens: List[str], pe_tokens: List[str], alignments: List[Tuple[Optional[int], Optional[int], float]]) -> List[bool]:
+    def _detect_crossing_edges(
+        mt_tokens: List[str], pe_tokens: List[str], alignments: List[Tuple[Optional[int], Optional[int], float]]
+    ) -> List[bool]:
         """Detect crossing edges in the alignments. Return mask list of nodes that cross some other node."""
         # TODO: optimize from n^2 to n as 2 pointers
         shifted_mt_mask = [False] * len(mt_tokens)
@@ -537,7 +544,7 @@ class NameTBDTagger(QETagger):
         mt_pe_alignments: List[List[TAlignment]],
         threshold: float = 0.8,
     ) -> List[List[TTag]]:
-        """ Produce tags on MT tokens from edits found in the PE tokens.
+        """Produce tags on MT tokens from edits found in the PE tokens.
 
         Note: The tags indicate the type of error particular MT token is affected by.
 
@@ -568,44 +575,60 @@ class NameTBDTagger(QETagger):
 
         mt_tags: List[List[Set[str]]] = []
 
-        for mt_sent_tok, pe_sent_tok, mt_pe_sent_align in tqdm(zip(mt_tokens, pe_tokens, mt_pe_alignments), desc="Tagging MT", total=len(mt_tokens)):
-
+        for mt_sent_tok, pe_sent_tok, mt_pe_sent_align in tqdm(
+            zip(mt_tokens, pe_tokens, mt_pe_alignments), desc="Tagging MT", total=len(mt_tokens)
+        ):
             mt_sent_tags: List[Set[str]] = [set() for _ in range(len(mt_sent_tok))]
 
             # clear 1-n and n-1 nodes with low threshold
-            # e.g. if 1-n or n-1 have same token or high similarity, remove low similarity as deletions/insertions (None:1 and 1:None)
+            # e.g. if 1-n or n-1 have same token or high similarity, remove low similarity as deletions/insertions
+            # (None:1 and 1:None)
             aligns_remove_1_to_n, aligns_remove_n_to_1 = set(), set()
             # 1-n match
-            for mt_node_id, connected_pe_nodes_ids, connected_pe_similarity in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=True, sort=True):
+            for mt_node_id, connected_pe_nodes_ids, connected_pe_similarity in NameTBDTagger._group_by_node(
+                mt_pe_sent_align, by_start_node=True, sort=True
+            ):
                 if mt_node_id is not None and len(connected_pe_nodes_ids) > 1:
                     if all(sim < threshold for sim in connected_pe_similarity if sim is not None):
                         continue
                     if all(sim > threshold for sim in connected_pe_similarity if sim is not None):
                         continue
-                    aligns_remove_1_to_n.update([
-                        (mt_node_id, pe_node_id, sim)
-                        for pe_node_id, sim in zip(connected_pe_nodes_ids, connected_pe_similarity)
-                        if pe_node_id is not None and sim is not None and sim < threshold
-                    ])
+                    aligns_remove_1_to_n.update(
+                        [
+                            (mt_node_id, pe_node_id, sim)
+                            for pe_node_id, sim in zip(connected_pe_nodes_ids, connected_pe_similarity)
+                            if pe_node_id is not None and sim is not None and sim < threshold
+                        ]
+                    )
             # remove selected aligns and add None connected nodes instead
-            mt_pe_sent_align = [(None, align[1], None) if align in aligns_remove_1_to_n else align for align in mt_pe_sent_align]
+            mt_pe_sent_align = [
+                (None, align[1], None) if align in aligns_remove_1_to_n else align for align in mt_pe_sent_align
+            ]
             # n-1 match
-            for pe_node_id, connected_mt_nodes_ids, connected_mt_similarity in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=False, sort=True):
+            for pe_node_id, connected_mt_nodes_ids, connected_mt_similarity in NameTBDTagger._group_by_node(
+                mt_pe_sent_align, by_start_node=False, sort=True
+            ):
                 if pe_node_id is not None and len(connected_mt_nodes_ids) > 1:
                     if all(sim < threshold for sim in connected_mt_similarity if sim is not None):
                         continue
                     if all(sim > threshold for sim in connected_mt_similarity if sim is not None):
                         continue
-                    aligns_remove_n_to_1.update([
-                        (mt_node_id, pe_node_id, sim)
-                        for mt_node_id, sim in zip(connected_mt_nodes_ids, connected_mt_similarity)
-                        if mt_node_id is not None and sim is not None and sim < threshold
-                    ])
+                    aligns_remove_n_to_1.update(
+                        [
+                            (mt_node_id, pe_node_id, sim)
+                            for mt_node_id, sim in zip(connected_mt_nodes_ids, connected_mt_similarity)
+                            if mt_node_id is not None and sim is not None and sim < threshold
+                        ]
+                    )
             # remove selected aligns and add None connected nodes instead
-            mt_pe_sent_align = [(align[0], None, None) if align in aligns_remove_n_to_1 else align for align in mt_pe_sent_align]
+            mt_pe_sent_align = [
+                (align[0], None, None) if align in aligns_remove_n_to_1 else align for align in mt_pe_sent_align
+            ]
 
             # Solve all n-1: setup expansions tags and solve n-1 matches < threshold as smth+insertion
-            for pe_node_id, connected_mt_nodes_ids, _ in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=False, sort=True):
+            for pe_node_id, connected_mt_nodes_ids, _ in NameTBDTagger._group_by_node(
+                mt_pe_sent_align, by_start_node=False, sort=True
+            ):
                 if pe_node_id is not None and len(connected_mt_nodes_ids) > 1:
                     # expansion, mark related mt nodes
                     for mt_node_id in connected_mt_nodes_ids:
@@ -614,7 +637,9 @@ class NameTBDTagger(QETagger):
 
             # Solve all deletions, add deletion tags on left and right sides
             mt_position = 0
-            for mt_node_id, connected_pe_nodes_ids, _ in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=True, sort=False):
+            for mt_node_id, connected_pe_nodes_ids, _ in NameTBDTagger._group_by_node(
+                mt_pe_sent_align, by_start_node=True, sort=False
+            ):
                 if mt_node_id is None:
                     # deleted word error, mark left and right modes
                     if 0 <= mt_position - 1 < len(mt_sent_tags):
@@ -627,7 +652,9 @@ class NameTBDTagger(QETagger):
             mt_pe_sent_align = [align for align in mt_pe_sent_align if align[0] is not None]
 
             # Solve all 1-n matches
-            for mt_node_id, connected_pe_nodes_ids, _ in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=True, sort=True):
+            for mt_node_id, connected_pe_nodes_ids, _ in NameTBDTagger._group_by_node(
+                mt_pe_sent_align, by_start_node=True, sort=True
+            ):
                 assert mt_node_id is not None, "Already should be filtered all (None, smth) cases"
                 if NameTBDGeneralTags.BAD_EXPANSION.value in mt_sent_tags[mt_node_id]:
                     continue
@@ -645,7 +672,9 @@ class NameTBDTagger(QETagger):
                     mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.OK.value)
 
             # Add shifted tags if so
-            for mt_node_id, mask in enumerate(NameTBDTagger._detect_crossing_edges(mt_sent_tok, pe_sent_tok, mt_pe_sent_align)):
+            for mt_node_id, mask in enumerate(
+                NameTBDTagger._detect_crossing_edges(mt_sent_tok, pe_sent_tok, mt_pe_sent_align)
+            ):
                 if mask:
                     mt_sent_tags[mt_node_id].add(NameTBDGeneralTags.BAD_SHIFTING.value)
 
@@ -654,7 +683,7 @@ class NameTBDTagger(QETagger):
 
         # Basic sanity check
         assert all(
-            [len(mt_sent_tokens) == len(mt_sent_tags) for mt_sent_tokens, mt_sent_tags in zip(mt_tokens, mt_tags)]
+            len(mt_sent_tokens) == len(mt_sent_tags) for mt_sent_tokens, mt_sent_tags in zip(mt_tokens, mt_tags)
         ), "MT tags creation failed, number of tokens and tags do not match"
         return mt_tags
 
@@ -665,7 +694,7 @@ class NameTBDTagger(QETagger):
         src_mt_alignments: List[List[TAlignment]],
         mt_tags: List[List[Set[str]]],
     ) -> List[List[TTag]]:
-        """ Propagate tags from MT to source.
+        """Propagate tags from MT to source.
 
         # TODO: update docstring with the final logic
         The following cases are considered:
@@ -683,12 +712,15 @@ class NameTBDTagger(QETagger):
 
         src_tags: List[List[Set[str]]] = []
 
-        for src_sent_tok, mt_sent_tok, mt_sent_tags, mt_pe_sent_align in tqdm(zip(src_tokens, mt_tokens, mt_tags, src_mt_alignments), desc="Transfer to source", total=len(src_tokens)):
-
+        for src_sent_tok, _mt_sent_tok, mt_sent_tags, mt_pe_sent_align in tqdm(
+            zip(src_tokens, mt_tokens, mt_tags, src_mt_alignments), desc="Transfer to source", total=len(src_tokens)
+        ):
             src_sent_tags: List[Set[str]] = [set() for _ in range(len(src_sent_tok))]
 
             # Solve all as 1-n matches
-            for src_node_id, connected_mt_nodes_ids, connected_mt_similarity in NameTBDTagger._group_by_node(mt_pe_sent_align, by_start_node=True, sort=True):
+            for src_node_id, connected_mt_nodes_ids, connected_mt_similarity in NameTBDTagger._group_by_node(
+                mt_pe_sent_align, by_start_node=True, sort=True
+            ):
                 if src_node_id is None:
                     continue
                 elif len(connected_mt_nodes_ids) == 0:
@@ -716,7 +748,9 @@ class NameTBDTagger(QETagger):
             src_tags.append(src_sent_tags)
 
         # Basic sanity checks
-        assert all(len(aa) == len(bb) for aa, bb in zip(src_tokens, src_tags)), "Source tags creation failed, number of tokens and tags do not match"
+        assert all(
+            len(aa) == len(bb) for aa, bb in zip(src_tokens, src_tags)
+        ), "Source tags creation failed, number of tokens and tags do not match"
         return src_tags
 
     def generate_tags(
@@ -735,9 +769,7 @@ class NameTBDTagger(QETagger):
         mt_pe_alignments = self.align_mt_pe(mt_tokens, pe_tokens, tgt_langs)
 
         mt_tags = self.tags_from_edits(mt_tokens, pe_tokens, mt_pe_alignments)
-        src_tags = self.tags_to_source(
-            src_tokens, pe_tokens, src_mt_alignments, mt_tags
-        )
+        src_tags = self.tags_to_source(src_tokens, pe_tokens, src_mt_alignments, mt_tags)
 
         clear_nlp_cache()
 
