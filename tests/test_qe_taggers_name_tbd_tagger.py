@@ -48,7 +48,12 @@ class TestTagsFromEdits:
     @pytest.mark.parametrize(
         "mt_tokens, pe_tokens, mt_pe_alignments, true_mt_tags",
         [
-            (["A", "B"], ["A", "B"], [(0, 0, 0.9), (1, 1, 0.9)], [{Tags.OK}, {Tags.OK}]),
+            (
+                ["A", "B"],
+                ["A", "B"],
+                [(0, 0, 0.9), (1, 1, 0.9)],
+                [{Tags.OK}, {Tags.OK}],
+            ),
             (
                 ["A", "B", "C", "D"],
                 ["A", "B", "C", "D"],
@@ -79,7 +84,12 @@ class TestTagsFromEdits:
                 [(0, 0, 0.9), (1, 1, 0.9), (2, 2, 0.9)],
                 [{Tags.OK}, {Tags.BAD_SUBSTITUTION}, {Tags.BAD_SUBSTITUTION}],
             ),
-            (["A", "B"], ["Z", "X"], [(0, 0, 0.9), (1, 1, 0.9)], [{Tags.BAD_SUBSTITUTION}, {Tags.BAD_SUBSTITUTION}]),
+            (
+                ["A", "B"],
+                ["Z", "X"],
+                [(0, 0, 0.9), (1, 1, 0.9)],
+                [{Tags.BAD_SUBSTITUTION}, {Tags.BAD_SUBSTITUTION}],
+            ),
             # For 1-n and n-1 cases see contraction and expansion tests
         ],
     )
@@ -119,8 +129,18 @@ class TestTagsFromEdits:
     @pytest.mark.parametrize(
         "mt_tokens, pe_tokens, mt_pe_alignments, true_mt_tags",
         [
-            (["A"], ["A", "X"], [(0, 0, 0.9), (None, 1, None)], [{Tags.OK, Tags.BAD_DELETION_RIGHT}]),
-            (["A"], ["X", "A"], [(None, 0, None), (0, 1, 0.9)], [{Tags.OK, Tags.BAD_DELETION_LEFT}]),
+            (
+                ["A"],
+                ["A", "X"],
+                [(0, 0, 0.9), (None, 1, None)],
+                [{Tags.OK, Tags.BAD_DELETION_RIGHT}],
+            ),
+            (
+                ["A"],
+                ["X", "A"],
+                [(None, 0, None), (0, 1, 0.9)],
+                [{Tags.OK, Tags.BAD_DELETION_LEFT}],
+            ),
             (
                 ["A", "B"],
                 ["A", "X", "B"],
@@ -361,7 +381,13 @@ class TestTagsToSource:
         "src_tokens, mt_tokens, mt_pe_alignments, mt_tags, true_src_tags",
         [
             # ok cases
-            (["A", "B"], ["A", "B"], [(0, 0, 0.9), (1, 1, 0.9)], [{Tags.OK}, {Tags.OK}], [{Tags.OK}, {Tags.OK}]),
+            (
+                ["A", "B"],
+                ["A", "B"],
+                [(0, 0, 0.9), (1, 1, 0.9)],
+                [{Tags.OK}, {Tags.OK}],
+                [{Tags.OK}, {Tags.OK}],
+            ),
             (
                 ["A", "B", "C", "D"],
                 ["A", "B", "C", "D"],
@@ -413,7 +439,13 @@ class TestTagsToSource:
     @pytest.mark.parametrize(
         "src_tokens, mt_tokens, mt_pe_alignments, mt_tags, true_src_tags",
         [
-            (["A"], ["A", "B"], [(0, 0, 0.9), (None, 1, None)], [{Tags.OK}, {Tags.BAD_SUBSTITUTION}], [{Tags.OK}]),
+            (
+                ["A"],
+                ["A", "B"],
+                [(0, 0, 0.9), (None, 1, None)],
+                [{Tags.OK}, {Tags.BAD_SUBSTITUTION}],
+                [{Tags.OK}],
+            ),
             (
                 ["A", "B"],
                 ["A", "B", "C"],

@@ -95,7 +95,7 @@ class NameTBDTagger(QETagger):
 
     @staticmethod
     def _group_by_node(
-        alignments: List[Tuple[Optional[int], Optional[int]]], by_start_node: bool = True, sort: bool = False
+        alignments: List[TAlignment], by_start_node: bool = True, sort: bool = False
     ) -> Generator[Tuple[int, List[int], List[float]], None, None]:
         """Yield a node id and a list of connected nodes."""
         _by_index = 0 if by_start_node else 1
@@ -109,7 +109,7 @@ class NameTBDTagger(QETagger):
 
     @staticmethod
     def _detect_crossing_edges(
-        mt_tokens: List[str], pe_tokens: List[str], alignments: List[Tuple[Optional[int], Optional[int], float]]
+        mt_tokens: List[str], pe_tokens: List[str], alignments: List[TAlignment]
     ) -> List[bool]:
         """Detect crossing edges in the alignments. Return mask list of nodes that cross some other node."""
         # TODO: optimize from n^2 to n as 2 pointers

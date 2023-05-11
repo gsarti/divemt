@@ -17,6 +17,7 @@ from tqdm import tqdm
 from ..parse_utils import clear_nlp_cache
 from .base import QETagger, TAlignment, TTag
 from .wmt22qe_utils import align_sentence_tercom, parse_tercom_xml_file
+from ..cache_utils import CacheDecorator
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class WMT22QETagger(QETagger):
         self.tercom_out = Path(tercom_out) if tercom_out is not None else self.tmp_dir / "tercom"
         self.tercom_path = tercom_path if tercom_path is not None else "scripts/tercom.7.25.jar"
 
+    @CacheDecorator()
     def align_source_pe(
         self,
         src_tokens: List[List[str]],
@@ -78,6 +80,7 @@ class WMT22QETagger(QETagger):
             )
         ]
 
+    @CacheDecorator()
     def align_mt_pe(
         self,
         mt_tokens: List[List[str]],
