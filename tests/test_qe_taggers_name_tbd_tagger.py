@@ -8,6 +8,7 @@ if sys.version_info < (3, 11):
 else:
     from enum import StrEnum
 
+from divemt.qe_taggers import TTag, TAlignment
 from divemt.qe_taggers.name_tbd_tagger import NameTBDGeneralTags as Tags
 from divemt.qe_taggers.name_tbd_tagger import NameTBDTagger
 
@@ -36,12 +37,81 @@ class TestUtils:
         ],
     )
     def test_detect_crossing_edges(
-        self, mt_len: int, mt_pe_alignments: List[Tuple[int, int]], true_mt_shifts_mask: List[bool]
+        self, mt_len: int, mt_pe_alignments: List[TAlignment], true_mt_shifts_mask: List[bool]
     ) -> None:
         mt_shifts_mask = tagger._detect_crossing_edges(
             [str(i) for i in range(mt_len)], [str(i) for i in range(mt_len)], mt_pe_alignments
         )
         assert mt_shifts_mask == true_mt_shifts_mask
+
+    @pytest.mark.parametrize(
+        "mt_len, pe_len, mt_pe_alignments, true_mt_pe_alignments",
+        [
+            # Nothing to add
+            (
+                3,
+                3,
+                [(0, 0, 0.5), (1, 2, 0.5), (2, 1, 0.5)],
+                [(0, 0, 0.5), (1, 2, 0.5), (2, 1, 0.5)],
+            ),
+            (
+                3,
+                3,
+                [(0, 2, 0.5), (1, 1, 0.5), (2, 0, 0.5)],
+                [(0, 2, 0.5), (1, 1, 0.5), (2, 0, 0.5)],
+            ),
+            # Add (i, None) - insertions
+            (
+                3,
+                2,
+                [(0, 1, 0.5), (2, 0, 0.5)],
+                [(0, 1, 0.5), (1, None, None), (2, 0, 0.5)],
+            ),
+            (
+                3,
+                1,
+                [(0, 0, 0.5)],
+                [(0, 0, 0.5), (1, None, None), (2, None, None)],
+            ),
+            # Add (None, i) - deletions in the right places
+            (
+                2,
+                3,
+                [(0, 0, 0.5), (1, 2, 0.5)],
+                [(0, 0, 0.5), (None, 1, None), (1, 2, 0.5)],
+            ),
+            (
+                2,
+                4,
+                [(0, 0, 0.5), (1, 3, 0.5)],
+                [(0, 0, 0.5), (None, 1, None), (None, 2, None), (1, 3, 0.5)],
+            ),
+            (
+                1,
+                3,
+                [(0, 0, 0.5)],
+                [(0, 0, 0.5), (None, 1, None), (None, 2, None)],
+            ),
+            (
+                2,
+                4,
+                [(0, 0, 0.5), (1, 3, 0.5)],
+                [(0, 0, 0.5), (None, 1, None), (None, 2, None), (1, 3, 0.5)],
+            ),
+            # mixed insert/delete - first add (1, None), then (None, j)
+            (
+                2,
+                3,
+                [(0, 0, 0.5)],
+                [(0, 0, 0.5), (None, 1, None), (None, 2, None), (1, None, None)],
+            ),
+        ]
+    )
+    def test_fill_deleted_inserted_tokens(
+        self, mt_len: int, pe_len: int, mt_pe_alignments: List[TAlignment], true_mt_pe_alignments: List[TAlignment]
+    ) -> None:
+        filled_mt_pe_alignments = tagger._fill_deleted_inserted_tokens(mt_len, pe_len, mt_pe_alignments)
+        assert filled_mt_pe_alignments == true_mt_pe_alignments
 
 
 class TestTagsFromEdits:
@@ -67,7 +137,7 @@ class TestTagsFromEdits:
         self,
         mt_tokens: List[str],
         pe_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         true_mt_tags: List[Set[StrEnum]],
     ) -> None:
         predicted_tags = tagger.tags_from_edits([mt_tokens], [pe_tokens], [mt_pe_alignments])[0]
@@ -97,7 +167,7 @@ class TestTagsFromEdits:
         self,
         mt_tokens: List[str],
         pe_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         true_mt_tags: List[Set[StrEnum]],
     ) -> None:
         predicted_tags = tagger.tags_from_edits([mt_tokens], [pe_tokens], [mt_pe_alignments])[0]
@@ -118,7 +188,7 @@ class TestTagsFromEdits:
         self,
         mt_tokens: List[str],
         pe_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         true_mt_tags: List[Set[StrEnum]],
     ) -> None:
         predicted_tags = tagger.tags_from_edits([mt_tokens], [pe_tokens], [mt_pe_alignments])[0]
@@ -181,7 +251,7 @@ class TestTagsFromEdits:
         self,
         mt_tokens: List[str],
         pe_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         true_mt_tags: List[Set[StrEnum]],
     ) -> None:
         predicted_tags = tagger.tags_from_edits([mt_tokens], [pe_tokens], [mt_pe_alignments])[0]
@@ -249,7 +319,7 @@ class TestTagsFromEdits:
         self,
         mt_tokens: List[str],
         pe_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         true_mt_tags: List[Set[str]],
     ) -> None:
         predicted_tags = tagger.tags_from_edits([mt_tokens], [pe_tokens], [mt_pe_alignments])[0]
@@ -314,7 +384,7 @@ class TestTagsFromEdits:
         self,
         mt_tokens: List[str],
         pe_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         true_mt_tags: List[Set[str]],
     ) -> None:
         predicted_tags = tagger.tags_from_edits([mt_tokens], [pe_tokens], [mt_pe_alignments])[0]
@@ -367,7 +437,7 @@ class TestTagsFromEdits:
         self,
         mt_tokens: List[str],
         pe_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         true_mt_tags: List[Set[StrEnum]],
     ) -> None:
         predicted_tags = tagger.tags_from_edits([mt_tokens], [pe_tokens], [mt_pe_alignments])[0]
@@ -425,7 +495,7 @@ class TestTagsToSource:
         self,
         src_tokens: List[str],
         mt_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         mt_tags: List[Set[StrEnum]],
         true_src_tags: List[Set[StrEnum]],
     ) -> None:
@@ -459,7 +529,7 @@ class TestTagsToSource:
         self,
         src_tokens: List[str],
         mt_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         mt_tags: List[Set[StrEnum]],
         true_src_tags: List[Set[StrEnum]],
     ) -> None:
@@ -493,7 +563,7 @@ class TestTagsToSource:
         self,
         src_tokens: List[str],
         mt_tokens: List[str],
-        mt_pe_alignments: List[Tuple[int, int]],
+        mt_pe_alignments: List[TAlignment],
         mt_tags: List[Set[StrEnum]],
         true_src_tags: List[Set[StrEnum]],
     ) -> None:

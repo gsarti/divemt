@@ -3,6 +3,8 @@ import sys
 from itertools import groupby
 from typing import Generator, List, Optional, Set, Tuple, Union
 
+import numpy as np
+
 if sys.version_info < (3, 11):
     from strenum import StrEnum
 else:
@@ -46,25 +48,51 @@ class NameTBDTagger(QETagger):
             else CustomSentenceAligner(model="bert", token_type="bpe", matching_methods="mai", return_similarity="avg")
         )
 
+    @staticmethod
     def _fill_deleted_inserted_tokens(
-        self, len_from: int, len_to: int, alignments: List[TAlignment]
+        len_from: int, len_to: int, alignments: List[TAlignment]
     ) -> List[TAlignment]:
-        """As aligner provides only actual alignments, add required (None, i), (i, None) tokens"""
+        """
+        As aligner provides only actual alignments, add required i, None), (None, j) tokens
+        * (i, None) just inserted in places to maintain order by i
+        * (None, j) inserted in estimated places
+            - if
+        """
         new_alignments: List[TAlignment] = []
 
         # Add (i, None) in correct place (ordered by i)
-        current_alignment_index = 0
+        current_i_alignment_index = 0
         for align in alignments:
-            # Add missing index pairs with None
-            while current_alignment_index < align[0]:
-                new_alignments.append((current_alignment_index, None))
-                current_alignment_index += 1
+            # Add missing index pairs before current one with (i, None)
+            while current_i_alignment_index < align[0]:
+                new_alignments.append((current_i_alignment_index, None, None))
+                current_i_alignment_index += 1
 
             # Add the current alignment pair
             new_alignments.append(align)
-            current_alignment_index += 1
+            current_i_alignment_index += 1
+        # add last (i, None)
+        while current_i_alignment_index < len_from:
+            new_alignments.append((current_i_alignment_index, None, None))
+            current_i_alignment_index += 1
 
-        raise NotImplementedError()
+        # Add (None, j) in correct places
+        missed_j_tokens = set(range(len_to)) - {j[1] for j in new_alignments}
+        for current_j_alignment_index in missed_j_tokens:
+            # select the closest (*, j) by j: obtain index in the list and j value
+            closest_value_index = min(
+                range(len(new_alignments)),
+                key=lambda i: abs(new_alignments[i][1] - current_j_alignment_index) if new_alignments[i][1] is not None else np.inf
+            )
+            closest_value_j = new_alignments[closest_value_index][1]
+            # insert position of the (None, current_j_alignment_index) - before of after the closes value
+            if closest_value_j < current_j_alignment_index:
+                insert_index = closest_value_index + 1
+            else:
+                insert_index = closest_value_index  # - 1
+            insert_index = max(0, min(insert_index, len(new_alignments)))
+            # insert it in right place
+            new_alignments.insert(insert_index, (None, current_j_alignment_index, None))
 
         return new_alignments
 
@@ -173,12 +201,12 @@ class NameTBDTagger(QETagger):
         """
         # TODO: check. now - if embeddings are not provided, use Lev distance
 
-        mt_tags: List[List[Set[str]]] = []
+        mt_tags: List[List[TTag]] = []
 
         for mt_sent_tok, pe_sent_tok, mt_pe_sent_align in tqdm(
             zip(mt_tokens, pe_tokens, mt_pe_alignments), desc="Tagging MT", total=len(mt_tokens)
         ):
-            mt_sent_tags: List[Set[str]] = [set() for _ in range(len(mt_sent_tok))]
+            mt_sent_tags: List[TTag] = [set() for _ in range(len(mt_sent_tok))]
 
             # clear 1-n and n-1 nodes with low threshold
             # e.g. if 1-n or n-1 have same token or high similarity, remove low similarity as deletions/insertions
@@ -310,12 +338,12 @@ class NameTBDTagger(QETagger):
             - Copy tags from top match in MT and ignore other matches
         """
 
-        src_tags: List[List[Set[str]]] = []
+        src_tags: List[List[TTag]] = []
 
         for src_sent_tok, _mt_sent_tok, mt_sent_tags, mt_pe_sent_align in tqdm(
             zip(src_tokens, mt_tokens, mt_tags, src_mt_alignments), desc="Transfer to source", total=len(src_tokens)
         ):
-            src_sent_tags: List[Set[str]] = [set() for _ in range(len(src_sent_tok))]
+            src_sent_tags: List[TTag] = [set() for _ in range(len(src_sent_tok))]
 
             # Solve all as 1-n matches
             for src_node_id, connected_mt_nodes_ids, connected_mt_similarity in NameTBDTagger._group_by_node(
