@@ -14,10 +14,10 @@ else:
 from simalign import SentenceAligner
 from tqdm import tqdm
 
+from ..cache_utils import CacheDecorator
 from ..parse_utils import clear_nlp_cache
 from .base import QETagger, TAlignment, TTag
 from .wmt22qe_utils import align_sentence_tercom, parse_tercom_xml_file
-from ..cache_utils import CacheDecorator
 
 logger = logging.getLogger(__name__)
 

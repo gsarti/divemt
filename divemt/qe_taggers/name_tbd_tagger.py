@@ -12,9 +12,9 @@ else:
 from tqdm import tqdm
 
 from ..cache_utils import CacheDecorator
-from .custom_simalign import SentenceAligner as CustomSentenceAligner
 from ..parse_utils import clear_nlp_cache
 from .base import QETagger, TAlignment, TTag
+from .custom_simalign import SentenceAligner as CustomSentenceAligner
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,11 @@ class NameTBDTagger(QETagger):
                 # select the closest (*, j) by j: obtain index in the list and j value
                 closest_value_index = min(
                     range(len(new_alignments)),
-                    key=lambda i: abs(new_alignments[i][1] - current_j_alignment_index) if new_alignments[i][1] is not None else np.inf
+                    key=lambda i: (
+                        abs(new_alignments[i][1] - current_j_alignment_index)
+                        if new_alignments[i][1] is not None
+                        else np.inf
+                    ),
                 )
                 closest_value_j = new_alignments[closest_value_index][1]
                 # insert position of the (None, current_j_alignment_index) - before of after the closes value
@@ -142,9 +146,7 @@ class NameTBDTagger(QETagger):
             ], [similarity for _, _, similarity in connected_alignments]
 
     @staticmethod
-    def _detect_crossing_edges(
-        mt_tokens: List[str], pe_tokens: List[str], alignments: List[TAlignment]
-    ) -> List[bool]:
+    def _detect_crossing_edges(mt_tokens: List[str], pe_tokens: List[str], alignments: List[TAlignment]) -> List[bool]:
         """Detect crossing edges in the alignments. Return mask list of nodes that cross some other node."""
         # TODO: optimize from n^2 to n as 2 pointers
         shifted_mt_mask = [False] * len(mt_tokens)
@@ -356,9 +358,7 @@ class NameTBDTagger(QETagger):
 
             # Filter all (i, None), (None, j)
             cleared_mt_pe_sent_align = [
-                alignment
-                for alignment in mt_pe_sent_align
-                if alignment[0] is not None and alignment[1] is not None
+                alignment for alignment in mt_pe_sent_align if alignment[0] is not None and alignment[1] is not None
             ]
 
             # Solve all as 1-n matches

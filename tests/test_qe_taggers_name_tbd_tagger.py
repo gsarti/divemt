@@ -1,5 +1,5 @@
 import sys
-from typing import List, Set, Tuple
+from typing import List, Set
 
 import pytest
 
@@ -8,7 +8,7 @@ if sys.version_info < (3, 11):
 else:
     from enum import StrEnum
 
-from divemt.qe_taggers import TTag, TAlignment
+from divemt.qe_taggers import TAlignment
 from divemt.qe_taggers.name_tbd_tagger import NameTBDGeneralTags as Tags
 from divemt.qe_taggers.name_tbd_tagger import NameTBDTagger
 
@@ -118,12 +118,22 @@ class TestUtils:
                 [(0, 0, 0.5), (None, 1, None), (None, 2, None), (1, None, None)],
             ),
             (
-                11,
-                11,
-                [(0, 0, 0.5), (1, 1, 0.5), (2, 2, 0.5), (4, 4, 0.5), (5, 5, 0.5), (5, 6, 0.5), (6, 7, 0.5), (7, 8, 0.5), (8, 9, 0.5), (10, 10, 0.5)],
-                [(0, 0, 0.5), (1, 1, 0.5), (2, 2, 0.5), (None, 3, None), (3, None, None), (4, 4, 0.5), (5, 5, 0.5), (5, 6, 0.5), (6, 7, 0.5), (7, 8, 0.5), (8, 9, 0.5), (9, None, None), (10, 10, 0.5)],
+                7,
+                7,
+                [(0, 0, 0.5), (2, 2, 0.5), (3, 3, 0.5), (3, 4, 0.5), (4, 5, 0.5), (6, 6, 0.5)],
+                [
+                    (0, 0, 0.5),
+                    (None, 1, None),
+                    (1, None, None),
+                    (2, 2, 0.5),
+                    (3, 3, 0.5),
+                    (3, 4, 0.5),
+                    (4, 5, 0.5),
+                    (5, None, None),
+                    (6, 6, 0.5),
+                ],
             ),
-        ]
+        ],
     )
     def test_fill_deleted_inserted_tokens(
         self, mt_len: int, pe_len: int, mt_pe_alignments: List[TAlignment], true_mt_pe_alignments: List[TAlignment]
