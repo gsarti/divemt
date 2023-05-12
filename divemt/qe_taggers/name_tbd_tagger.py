@@ -73,7 +73,8 @@ class NameTBDTagger(QETagger):
 
                 # Add the current alignment pair
                 new_alignments.append(align)
-                current_i_alignment_index += 1
+                if align[0] == current_i_alignment_index:
+                    current_i_alignment_index += 1
             # add last (i, None)
             while current_i_alignment_index < len_from:
                 new_alignments.append((current_i_alignment_index, None, None))
@@ -318,6 +319,9 @@ class NameTBDTagger(QETagger):
         assert all(
             len(mt_sent_tokens) == len(mt_sent_tags) for mt_sent_tokens, mt_sent_tags in zip(mt_tokens, mt_tags)
         ), "MT tags creation failed, number of tokens and tags do not match"
+        assert all(
+            len(tags) > 0 for mt_sent_tags in mt_tags for tags in mt_sent_tags
+        ), "At least 1 tag in the set should be present for each token"
         return mt_tags
 
     @staticmethod
@@ -350,13 +354,18 @@ class NameTBDTagger(QETagger):
         ):
             src_sent_tags: List[TTag] = [set() for _ in range(len(src_sent_tok))]
 
+            # Filter all (i, None), (None, j)
+            cleared_mt_pe_sent_align = [
+                alignment
+                for alignment in mt_pe_sent_align
+                if alignment[0] is not None and alignment[1] is not None
+            ]
+
             # Solve all as 1-n matches
             for src_node_id, connected_mt_nodes_ids, connected_mt_similarity in NameTBDTagger._group_by_node(
-                mt_pe_sent_align, by_start_node=True, sort=True
+                cleared_mt_pe_sent_align, by_start_node=True, sort=True
             ):
-                if src_node_id is None:
-                    continue
-                elif len(connected_mt_nodes_ids) == 0:
+                if len(connected_mt_nodes_ids) == 0:
                     continue
                 elif len(connected_mt_nodes_ids) > 1:
                     # n-1 match, find best match
@@ -370,9 +379,6 @@ class NameTBDTagger(QETagger):
                     else:
                         # copy tags from best match
                         src_sent_tags[src_node_id].update(mt_sent_tags[best_mt_node_id])
-                elif connected_mt_nodes_ids[0] is None:
-                    # nothing to copy from MT
-                    continue
                 else:
                     # 1-1 match, copy tags
                     src_sent_tags[src_node_id].update(mt_sent_tags[connected_mt_nodes_ids[0]])
@@ -400,6 +406,11 @@ class NameTBDTagger(QETagger):
 
         src_mt_alignments = self.align_source_mt(src_tokens, mt_tokens, src_langs, tgt_langs)
         mt_pe_alignments = self.align_mt_pe(mt_tokens, pe_tokens, tgt_langs)
+        mt_pe_alignments = self._fill_deleted_inserted_tokens(
+            [len(i) for i in mt_tokens],
+            [len(i) for i in pe_tokens],
+            mt_pe_alignments,
+        )
 
         mt_tags = self.tags_from_edits(mt_tokens, pe_tokens, mt_pe_alignments)
         src_tags = self.tags_to_source(src_tokens, pe_tokens, src_mt_alignments, mt_tags)
