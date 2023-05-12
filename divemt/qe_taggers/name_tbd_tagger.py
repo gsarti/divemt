@@ -50,51 +50,56 @@ class NameTBDTagger(QETagger):
 
     @staticmethod
     def _fill_deleted_inserted_tokens(
-        len_from: int, len_to: int, alignments: List[TAlignment]
-    ) -> List[TAlignment]:
+        len_from_list: List[int], len_to_list: List[int], alignments_list: List[List[TAlignment]]
+    ) -> List[List[TAlignment]]:
         """
         As aligner provides only actual alignments, add required i, None), (None, j) tokens
         * (i, None) just inserted in places to maintain order by i
         * (None, j) inserted in estimated places
             - if
         """
-        new_alignments: List[TAlignment] = []
+        full_new_alignments: List[List[TAlignment]] = []
 
-        # Add (i, None) in correct place (ordered by i)
-        current_i_alignment_index = 0
-        for align in alignments:
-            # Add missing index pairs before current one with (i, None)
-            while current_i_alignment_index < align[0]:
+        for len_from, len_to, alignments in zip(len_from_list, len_to_list, alignments_list):
+            new_alignments: List[TAlignment] = []
+
+            # Add (i, None) in correct place (ordered by i)
+            current_i_alignment_index = 0
+            for align in alignments:
+                # Add missing index pairs before current one with (i, None)
+                while current_i_alignment_index < align[0]:
+                    new_alignments.append((current_i_alignment_index, None, None))
+                    current_i_alignment_index += 1
+
+                # Add the current alignment pair
+                new_alignments.append(align)
+                current_i_alignment_index += 1
+            # add last (i, None)
+            while current_i_alignment_index < len_from:
                 new_alignments.append((current_i_alignment_index, None, None))
                 current_i_alignment_index += 1
 
-            # Add the current alignment pair
-            new_alignments.append(align)
-            current_i_alignment_index += 1
-        # add last (i, None)
-        while current_i_alignment_index < len_from:
-            new_alignments.append((current_i_alignment_index, None, None))
-            current_i_alignment_index += 1
+            # Add (None, j) in correct places
+            missed_j_tokens = set(range(len_to)) - {j[1] for j in new_alignments}
+            for current_j_alignment_index in missed_j_tokens:
+                # select the closest (*, j) by j: obtain index in the list and j value
+                closest_value_index = min(
+                    range(len(new_alignments)),
+                    key=lambda i: abs(new_alignments[i][1] - current_j_alignment_index) if new_alignments[i][1] is not None else np.inf
+                )
+                closest_value_j = new_alignments[closest_value_index][1]
+                # insert position of the (None, current_j_alignment_index) - before of after the closes value
+                if closest_value_j < current_j_alignment_index:
+                    insert_index = closest_value_index + 1
+                else:
+                    insert_index = closest_value_index  # - 1
+                insert_index = max(0, min(insert_index, len(new_alignments)))
+                # insert it in right place
+                new_alignments.insert(insert_index, (None, current_j_alignment_index, None))
 
-        # Add (None, j) in correct places
-        missed_j_tokens = set(range(len_to)) - {j[1] for j in new_alignments}
-        for current_j_alignment_index in missed_j_tokens:
-            # select the closest (*, j) by j: obtain index in the list and j value
-            closest_value_index = min(
-                range(len(new_alignments)),
-                key=lambda i: abs(new_alignments[i][1] - current_j_alignment_index) if new_alignments[i][1] is not None else np.inf
-            )
-            closest_value_j = new_alignments[closest_value_index][1]
-            # insert position of the (None, current_j_alignment_index) - before of after the closes value
-            if closest_value_j < current_j_alignment_index:
-                insert_index = closest_value_index + 1
-            else:
-                insert_index = closest_value_index  # - 1
-            insert_index = max(0, min(insert_index, len(new_alignments)))
-            # insert it in right place
-            new_alignments.insert(insert_index, (None, current_j_alignment_index, None))
+            full_new_alignments.append(new_alignments)
 
-        return new_alignments
+        return full_new_alignments
 
     @CacheDecorator()
     def align_source_mt(

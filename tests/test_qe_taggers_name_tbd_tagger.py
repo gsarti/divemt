@@ -110,8 +110,9 @@ class TestUtils:
     def test_fill_deleted_inserted_tokens(
         self, mt_len: int, pe_len: int, mt_pe_alignments: List[TAlignment], true_mt_pe_alignments: List[TAlignment]
     ) -> None:
-        filled_mt_pe_alignments = tagger._fill_deleted_inserted_tokens(mt_len, pe_len, mt_pe_alignments)
-        assert filled_mt_pe_alignments == true_mt_pe_alignments
+        filled_mt_pe_alignments = tagger._fill_deleted_inserted_tokens([mt_len], [pe_len], [mt_pe_alignments])
+        for pred_alignments, true_alignments in zip(filled_mt_pe_alignments, [true_mt_pe_alignments]):
+            assert pred_alignments == true_alignments
 
 
 class TestTagsFromEdits:
