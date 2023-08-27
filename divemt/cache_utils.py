@@ -95,8 +95,9 @@ def calc_args_hash(*args: Any, **kwargs: any) -> bytes:
 
 
 class CacheDecorator:
-    def __init__(self, cache_dir: Optional[Path] = None, version: int = 0):
+    def __init__(self, cache_dir: Optional[Path] = None, version: int = 0, name: Optional[str] = None):
         self.version = version
+        self.name = name or  ''
         self.cache_dir = cache_dir or Path(".cache")
 
     @staticmethod
@@ -104,11 +105,14 @@ class CacheDecorator:
         return inspect.ismethod(function) or (hasattr(arg, "__class__") and function.__name__ in dir(arg.__class__))
 
     def __call__(self, function: Callable) -> Any:
+        cached_function_name = function.__qualname__.replace(".", "_")
+        if self.name:
+            cached_function_name = cached_function_name + "_" + self.name
         @functools.wraps(function)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             cache_key_args = args[1:] if self._is_bound_method(function, args[0]) else args
             hash_val = calc_args_hash(*cache_key_args, **kwargs)
-            cache_file = self.cache_dir / f"{function.__name__}_v{self.version}_{hash_val.hex()}.pkl"
+            cache_file = self.cache_dir / f"{cached_function_name}_v{self.version}_{hash_val.hex()}.pkl"
 
             # TODO: add logging, not printing
 

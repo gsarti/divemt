@@ -11,13 +11,13 @@ if sys.version_info < (3, 11):
     from strenum import StrEnum
 else:
     from enum import StrEnum
-from simalign import SentenceAligner
 from tqdm import tqdm
 
 from ..cache_utils import CacheDecorator
 from ..parse_utils import clear_nlp_cache
 from .base import QETagger, TAlignment, TTag
 from .wmt22qe_utils import align_sentence_tercom, parse_tercom_xml_file
+from .custom_simalign import SentenceAligner
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class WMT22QETagger(QETagger):
         self.tercom_out = Path(tercom_out) if tercom_out is not None else self.tmp_dir / "tercom"
         self.tercom_path = tercom_path if tercom_path is not None else "scripts/tercom.7.25.jar"
 
-    @CacheDecorator()
+    @CacheDecorator(version=0, name="xlmr")
     def align_source_pe(
         self,
         src_tokens: List[List[str]],
@@ -80,7 +80,7 @@ class WMT22QETagger(QETagger):
             )
         ]
 
-    @CacheDecorator()
+    @CacheDecorator(version=0, name="")
     def align_mt_pe(
         self,
         mt_tokens: List[List[str]],
@@ -293,7 +293,7 @@ class WMT22QETagger(QETagger):
         use_gaps: bool = False,
         omissions: str = OmissionRule.RIGHT.value,
         fluency_rule: str = FluencyRule.NORMAL.value,
-    ) -> Tuple[List[List[TTag]], List[List[TTag]]]:
+    ) -> Tuple[List[List[TTag]], List[List[TTag]], List[TAlignment], List[TAlignment]]:
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
@@ -313,4 +313,4 @@ class WMT22QETagger(QETagger):
 
         clear_nlp_cache()
 
-        return src_tags, mt_tags
+        return src_tags, mt_tags, None, None

@@ -42,10 +42,12 @@ class NameTBDTagger(QETagger):
         self,
         aligner: Optional[CustomSentenceAligner] = None,
     ):
+        # TODO: check with xlmr amth other trained with semanting sim
+        # version 0 for bert and 1 for xlmr
         self.aligner = (
             aligner
             if aligner
-            else CustomSentenceAligner(model="bert", token_type="bpe", matching_methods="mai", return_similarity="avg")
+            else CustomSentenceAligner(model="xlmr", token_type="bpe", matching_methods="mai", return_similarity="avg")
         )
 
     @staticmethod
@@ -106,7 +108,7 @@ class NameTBDTagger(QETagger):
 
         return full_new_alignments
 
-    @CacheDecorator()
+    @CacheDecorator(version=0, name="xlmr")
     def align_source_mt(
         self,
         src_tokens: List[List[str]],
@@ -119,7 +121,7 @@ class NameTBDTagger(QETagger):
             for src_tok, mt_tok in tqdm(zip(src_tokens, mt_tokens), total=len(src_tokens), desc="Aligning src-mt")
         ]
 
-    @CacheDecorator()
+    @CacheDecorator(version=0, name="xlmr")
     def align_mt_pe(
         self,
         mt_tokens: List[List[str]],
@@ -187,11 +189,11 @@ class NameTBDTagger(QETagger):
         The following situations are considered:
             1:1 match: OK if same, SUB if different
             1:n match:
-            - Obtain similarity between 1 and n (lexical, LaBSE if not found)
+            - Obtain similarity between 1 and n (align scores, TODO: lexical if not found)
             - If all matches are <threshold or all >threshold, tag as CON (contraction)
             - Else, tackle the highest match as 1:1 (OK/SUB) and the rest as None:1 (deletions)
             n:1 match:
-            - Obtain similarity between n and 1 (lexical, LaBSE if not found)
+            - Obtain similarity between n and 1 (align scores, TODO: lexical if not found)
             - If all matches are <threshold or all >threshold, tag as EXP (expansion)
             - Else, tackle the highest match as 1:1 (OK/SUB) and the rest as 1:None (insertions)
             n:m match:
@@ -339,12 +341,12 @@ class NameTBDTagger(QETagger):
         The following cases are considered:
             1:1 match: copy tags from MT
             1:n match:
-            - Find highest match for 1 in n (lexical, LaBSE if not found)
+            - Find highest match for 1 in n (align scores, TODO: lexical if not found)
             - If all matches are <threshold or all >threshold, TBD
             - Else, copy tags from top match in MT and ignore other matches
             n:1 match: copy tags from 1 to all n
             n:m match:
-            - For each 1 in n, find highest match for 1 in m (lexical, LaBSE if not found)
+            - For each 1 in n, find highest match for 1 in m (align scores, TODO: lexical if not found)
             - If all matches are <threshold or all >threshold, ignore and continue
             - Copy tags from top match in MT and ignore other matches
         """
@@ -399,7 +401,7 @@ class NameTBDTagger(QETagger):
         pes: List[str],
         src_langs: Union[str, List[Set[str]]],
         tgt_langs: Union[str, List[Set[str]]],
-    ) -> Tuple[List[TTag], List[TTag]]:
+    ) -> Tuple[List[TTag], List[TTag], List[TAlignment], List[TAlignment]]:
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
@@ -417,4 +419,4 @@ class NameTBDTagger(QETagger):
 
         clear_nlp_cache()
 
-        return src_tags, mt_tags
+        return src_tags, mt_tags, src_mt_alignments, mt_pe_alignments

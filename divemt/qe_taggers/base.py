@@ -80,7 +80,7 @@ class QETagger(ABC):
         pes: List[str],
         src_langs: Union[str, List[str]],
         tgt_langs: Union[str, List[str]],
-    ) -> Tuple[List[TTag], List[TTag]]:
+    ) -> Tuple[List[TTag], List[TTag], List[TAlignment], List[TAlignment]]:
         """Generate word-level quality estimation tags from source-mt-pe triplets.
 
         Args:
