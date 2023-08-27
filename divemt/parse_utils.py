@@ -351,7 +351,7 @@ def texts2qe(
 ) -> pd.DataFrame:
     """Add quality tags to a dataframe."""
     pe_texts = data.copy()[data.mt_text.notnull()]
-    src_tags, mt_tags = tagger.generate_tags(
+    src_tags, mt_tags, src_mt_alignments, mt_pe_alignments = tagger.generate_tags(
         pe_texts["src_text"].tolist(),
         pe_texts["mt_text"].tolist(),
         pe_texts["tgt_text"].tolist(),
@@ -361,6 +361,10 @@ def texts2qe(
     pe_texts[f"src_{tagger.ID}"] = src_tags
     pe_texts[f"mt_{tagger.ID}"] = mt_tags
     pe_texts = pe_texts[["unit_id", f"src_{tagger.ID}", f"mt_{tagger.ID}"]]
+    if src_mt_alignments:
+        pe_texts[f"src_mt_{tagger.ID}_alignments"] = src_mt_alignments
+    if mt_pe_alignments:
+        pe_texts[f"mt_pe_{tagger.ID}_alignments"] = mt_pe_alignments
     data = data.join(pe_texts.set_index("unit_id"), on="unit_id")
     return data
 
@@ -409,7 +413,7 @@ def parse_from_folder(
         if add_annotations_information:
             texts_df = texts2annotations(texts_df)  # TODO: make cache optional
         if add_wmt22_quality_tags:
-            tagger = WMT22QETagger()
+            tagger = WMT22QETagger()  # TODO: make cache optional
             texts_df = texts2qe(texts_df, tagger)
         if add_name_tbd_quality_tags:
             tagger = NameTBDTagger()  # TODO: make cache optional
