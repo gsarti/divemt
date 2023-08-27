@@ -7,6 +7,8 @@ import pandas as pd
 import stanza
 from tqdm import tqdm
 
+from divemt.cache_utils import CacheDecorator
+
 _STANZA_NLP_MAP = {
     "eng": {"lang": "en", "processors": "tokenize,pos,depparse,ner,lemma"},
     "ara": {"lang": "ar", "processors": "tokenize,pos,depparse,ner,lemma,mwt"},
@@ -108,15 +110,14 @@ def get_tokens_annotations(text: Optional[str], lang: str) -> Tuple[Optional[Lis
     return tokens, annotations
 
 
+@CacheDecorator()
 def texts2annotations(data: pd.DataFrame, unit_id_contains_lang: bool = True) -> pd.DataFrame:
     if "lang_id" not in data.columns and unit_id_contains_lang:
         data["lang_id"] = data.unit_id.str.split("-").map(lambda x: x[2])
-    src_tokens = []
-    src_annotations = []
-    mt_tokens = []
-    mt_annotations = []
-    tgt_tokens = []
-    tgt_annotations = []
+
+    src_tokens, mt_tokens, tgt_tokens = [], [], []
+    src_annotations, mt_annotations, tgt_annotations = [], [], []
+
     for _i, row in tqdm(data.iterrows(), desc="Adding Stanza annotations...", total=len(data)):
         src_tok, src_ann = get_tokens_annotations(row.src_text, "eng")
         mt_tok, mt_ann = get_tokens_annotations(row.mt_text, row.lang_id)
@@ -133,5 +134,7 @@ def texts2annotations(data: pd.DataFrame, unit_id_contains_lang: bool = True) ->
     data["mt_annotations"] = mt_annotations
     data["tgt_tokens"] = tgt_tokens
     data["tgt_annotations"] = tgt_annotations
+
     clear_nlp_cache()
+
     return data

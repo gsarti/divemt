@@ -1,117 +1,25 @@
 import codecs
 import logging
 import subprocess
-from abc import ABC, abstractmethod
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 from xml.sax.saxutils import escape
 
-from simalign import SentenceAligner
-from strenum import StrEnum
+if sys.version_info < (3, 11):
+    from strenum import StrEnum
+else:
+    from enum import StrEnum
 from tqdm import tqdm
 
-from .parse_utils import clear_nlp_cache, tokenize
+from ..cache_utils import CacheDecorator
+from ..parse_utils import clear_nlp_cache
+from .base import QETagger, TAlignment, TTag
 from .wmt22qe_utils import align_sentence_tercom, parse_tercom_xml_file
+from .custom_simalign import SentenceAligner
 
 logger = logging.getLogger(__name__)
-
-
-class QETagger(ABC):
-    """An abstract class to produce quality estimation tags from src-mt-pe triplets."""
-
-    ID = "qe"
-
-    def align_source_mt(
-        self,
-        src_tokens: List[List[str]],
-        mt_tokens: List[List[str]],
-        **align_source_mt_kwargs,
-    ) -> List[List[Tuple[int, int]]]:
-        """Align source and machine translation tokens."""
-        raise NotImplementedError(f"{self.__class__.__name__} does not implement align_source_mt()")
-
-    def align_source_pe(
-        self,
-        src_tokens: List[List[str]],
-        pe_tokens: List[List[str]],
-        **align_source_pe_kwargs,
-    ) -> List[List[Tuple[int, int]]]:
-        """Align source and post-edited tokens."""
-        raise NotImplementedError(f"{self.__class__.__name__} does not implement align_source_pe()")
-
-    @abstractmethod
-    def align_mt_pe(
-        self,
-        mt_tokens: List[List[str]],
-        pe_tokens: List[List[str]],
-        **align_mt_pe_kwargs,
-    ) -> List[List[Tuple[int, int]]]:
-        """Align machine translation and post-editing tokens."""
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def tags_from_edits(
-        mt_tokens: List[List[str]],
-        pe_tokens: List[List[str]],
-        alignments: List[List[Tuple[int, int]]],
-        **mt_tagging_kwargs,
-    ) -> List[List[str]]:
-        """Produce tags on MT tokens from edits found in the PE tokens."""
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def tags_to_source(
-        src_tokens: List[List[str]],
-        tgt_tokens: List[List[str]],
-        **src_tagging_kwargs,
-    ) -> List[List[str]]:
-        """Propagate tags from MT to source."""
-        pass
-
-    @staticmethod
-    def get_tokenized(
-        sents: List[str], lang: Union[str, List[str]]
-    ) -> Tuple[List[List[str]], Union[List[str], List[List[str]]]]:
-        """Tokenize sentences."""
-        if isinstance(lang, str):
-            lang = [lang] * len(sents)
-        tok: List[List[str]] = [tokenize(sent, curr_lang, keep_tokens=True) for sent, curr_lang in zip(sents, lang)]
-        assert len(tok) == len(lang)
-        return tok, lang
-
-    @abstractmethod
-    def generate_tags(
-        self,
-        srcs: List[str],
-        mts: List[str],
-        pes: List[str],
-        src_langs: Union[str, List[str]],
-        tgt_langs: Union[str, List[str]],
-    ) -> Tuple[List[str], List[str]]:
-        """Generate word-level quality estimation tags from source-mt-pe triplets.
-
-        Args:
-            srcs (`List[str]`):
-                List of untokenized source sentences.
-            mts (`List[str]`):
-                List of untokenized machine translated sentences.
-            pes (`List[str]`):
-                List of untokenized post-edited sentences.
-            src_langs (`Union[str, List[str]]`):
-                Either a single language code for all source sentences or a list of language codes
-                (one per source sentence).
-            tgt_langs (`Union[str, List[str]]`):
-                Either a single language code for all target sentences or a list of language codes
-                (one per machine translation).
-
-        Returns:
-            `Tuple[List[str], List[str]]`: A tuple containing the lists of quality tags for all source and the machine
-            translation sentence, respectively.
-        """
-        pass
 
 
 class FluencyRule(StrEnum):
@@ -156,12 +64,13 @@ class WMT22QETagger(QETagger):
         self.tercom_out = Path(tercom_out) if tercom_out is not None else self.tmp_dir / "tercom"
         self.tercom_path = tercom_path if tercom_path is not None else "scripts/tercom.7.25.jar"
 
+    @CacheDecorator(version=0, name="xlmr")
     def align_source_pe(
         self,
         src_tokens: List[List[str]],
         pe_tokens: List[List[str]],
         pe_langs: List[str],
-    ) -> List[List[Tuple[int, int]]]:
+    ) -> List[List[TAlignment]]:
         return [
             self.aligner.get_word_aligns(src_tok, mt_tok)["itermax" if mt_lang not in ["de", "cs"] else "inter"]
             for src_tok, mt_tok, mt_lang in tqdm(
@@ -171,11 +80,12 @@ class WMT22QETagger(QETagger):
             )
         ]
 
+    @CacheDecorator(version=0, name="")
     def align_mt_pe(
         self,
         mt_tokens: List[List[str]],
         pe_tokens: List[List[str]],
-    ) -> List[List[Tuple[int, int]]]:
+    ) -> List[List[TAlignment]]:
         ref_fname = self.tmp_dir / "ref.txt"
         hyp_fname = self.tmp_dir / "hyp.txt"
         # Adapted from https://github.com/deep-spin/qe-corpus-builder/corpus_generation/tools/format_tercom.py
@@ -224,10 +134,10 @@ class WMT22QETagger(QETagger):
     def tags_from_edits(
         mt_tokens: List[List[str]],
         pe_tokens: List[List[str]],
-        alignments: List[List[Tuple[int, int]]],
+        alignments: List[List[TAlignment]],
         use_gaps: bool = False,
         omissions: str = OmissionRule.RIGHT.value,
-    ) -> List[List[str]]:
+    ) -> List[List[TTag]]:
         """Produce tags on MT tokens from edits found in the PE tokens."""
         if use_gaps:
             omissions = OmissionRule.NONE.value
@@ -318,10 +228,10 @@ class WMT22QETagger(QETagger):
         src_tokens: List[List[str]],
         pe_tokens: List[List[str]],
         mt_tokens: List[List[str]],
-        src_pe_alignments: List[List[Tuple[int, int]]],
-        mt_pe_alignments: List[List[Tuple[int, int]]],
+        src_pe_alignments: List[List[TAlignment]],
+        mt_pe_alignments: List[List[TAlignment]],
         fluency_rule: str = FluencyRule.NORMAL.value,
-    ) -> List[List[str]]:
+    ) -> List[List[TTag]]:
         """Propagate tags from MT to source."""
         # Reorganize source-target alignments as a dict
         pe2source = []
@@ -383,12 +293,14 @@ class WMT22QETagger(QETagger):
         use_gaps: bool = False,
         omissions: str = OmissionRule.RIGHT.value,
         fluency_rule: str = FluencyRule.NORMAL.value,
-    ) -> Tuple[List[List[str]], List[List[str]]]:
+    ) -> Tuple[List[List[TTag]], List[List[TTag]], List[TAlignment], List[TAlignment]]:
         src_tokens, src_langs = self.get_tokenized(srcs, src_langs)
         mt_tokens, tgt_langs = self.get_tokenized(mts, tgt_langs)
         pe_tokens, _ = self.get_tokenized(pes, tgt_langs)
+
         src_pe_alignments = self.align_source_pe(src_tokens, pe_tokens, tgt_langs)
         mt_pe_alignments = self.align_mt_pe(mt_tokens, pe_tokens)
+
         mt_tags = self.tags_from_edits(mt_tokens, pe_tokens, mt_pe_alignments, use_gaps, omissions)
         src_tags = self.tags_to_source(
             src_tokens,
@@ -398,5 +310,7 @@ class WMT22QETagger(QETagger):
             mt_pe_alignments,
             fluency_rule,
         )
+
         clear_nlp_cache()
-        return src_tags, mt_tags
+
+        return src_tags, mt_tags, None, None

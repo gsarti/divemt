@@ -15,7 +15,7 @@ this program.  If not, see <https://www.gnu.org/licenses/>.
 import ctypes
 import itertools
 
-import Levenshtein
+import Levenshtein as levenshtein
 
 
 class EditDistance:
@@ -86,7 +86,7 @@ def cer(hyp_words, ref_words, ed_wrapper):
     if len(shifted_chars) == 0:
         return 1.0
 
-    edit_cost = Levenshtein.distance(shifted_chars, ref_chars) + shift_cost
+    edit_cost = levenshtein.distance(shifted_chars, ref_chars) + shift_cost
     return min(1.0, edit_cost / len(shifted_chars))
 
 
