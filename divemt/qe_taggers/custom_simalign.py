@@ -31,43 +31,78 @@ from transformers import (
     XLMRobertaModel,
     XLMRobertaTokenizer,
     XLMTokenizer,
+    PreTrainedTokenizer,
+    PreTrainedModel,
 )
 
 
-class EmbeddingLoader:
-    def __init__(self, model: str = "bert-base-multilingual-cased", device=torch.device("cpu"), layer: int = 8):
-        TR_Models = {
-            "bert-base-uncased": (BertModel, BertTokenizer),
-            "bert-base-multilingual-cased": (BertModel, BertTokenizer),
-            "bert-base-multilingual-uncased": (BertModel, BertTokenizer),
-            "xlm-mlm-100-1280": (XLMModel, XLMTokenizer),
-            "roberta-base": (RobertaModel, RobertaTokenizer),
-            "xlm-roberta-base": (XLMRobertaModel, XLMRobertaTokenizer),
-            "xlm-roberta-large": (XLMRobertaModel, XLMRobertaTokenizer),
-        }
+_LOADED_MODELS: Dict[str, Tuple[PreTrainedModel, PreTrainedTokenizer]] = {}
 
+
+class EmbeddingLoader:
+    TR_MODELS = {
+        "bert-base-uncased": (BertModel, BertTokenizer),
+        "bert-base-multilingual-cased": (BertModel, BertTokenizer),
+        "bert-base-multilingual-uncased": (BertModel, BertTokenizer),
+        "xlm-mlm-100-1280": (XLMModel, XLMTokenizer),
+        "roberta-base": (RobertaModel, RobertaTokenizer),
+        "xlm-roberta-base": (XLMRobertaModel, XLMRobertaTokenizer),
+        "xlm-roberta-large": (XLMRobertaModel, XLMRobertaTokenizer),
+    }
+
+    def __init__(
+            self,
+            model: str = "bert-base-multilingual-cased",
+            device="cpu",
+            layer: int = 8,
+            lazy_loading: bool = True,
+    ):
         self.model = model
         self.device = device
         self.layer = layer
-        self.emb_model = None
-        self.tokenizer = None
+        self.lazy_loading = lazy_loading
+        self._emb_model = None
+        self._tokenizer = None
 
-        if model in TR_Models:
-            model_class, tokenizer_class = TR_Models[model]
-            self.emb_model = model_class.from_pretrained(model, output_hidden_states=True)
-            self.emb_model.eval()
-            self.emb_model.to(self.device)
-            self.tokenizer = tokenizer_class.from_pretrained(model)
+        if not self.lazy_loading:
+            self._load_model()
+
+    @property
+    def tokenizer(self) -> PreTrainedTokenizer:
+        if self.lazy_loading and self._tokenizer is None:
+            self._load_model()
+        return self._tokenizer
+
+    @property
+    def emb_model(self) -> PreTrainedModel:
+        if self.lazy_loading and self._emb_model is None:
+            self._load_model()
+        return self._emb_model
+
+    def _load_model(self) -> None:
+        if self.model in _LOADED_MODELS:
+            self._emb_model, self._tokenizer = _LOADED_MODELS[self.model]
         else:
-            # try to load model with auto-classes
-            config = AutoConfig.from_pretrained(model, output_hidden_states=True)
-            self.emb_model = AutoModel.from_pretrained(model, config=config)
-            self.emb_model.eval()
-            self.emb_model.to(self.device)
-            self.tokenizer = AutoTokenizer.from_pretrained(model)
+            if self.model in self.TR_MODELS:
+                model_class, tokenizer_class = self.TR_MODELS[self.model]
+                self._emb_model = model_class.from_pretrained(self.model, output_hidden_states=True)
+                self._tokenizer = tokenizer_class.from_pretrained(self.model)
+            else:
+                # try to load model with auto-classes
+                config = AutoConfig.from_pretrained(self.model, output_hidden_states=True)
+                self._emb_model = AutoModel.from_pretrained(self.model, config=config)
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model)
+            _LOADED_MODELS[self.model] = (self._emb_model, self._tokenizer)
+
+        self._emb_model.eval()
+        # self._emb_model.half()
+        self._emb_model.to(self.device)
 
     def get_embed_list(self, sent_batch: List[List[str]]) -> torch.Tensor:
-        if self.emb_model is not None:
+        if self.lazy_loading and self._emb_model is None:
+            self._load_model()
+
+        if self._emb_model is not None:
             with torch.no_grad():
                 if not isinstance(sent_batch[0], str):
                     inputs = self.tokenizer(
@@ -77,7 +112,10 @@ class EmbeddingLoader:
                     inputs = self.tokenizer(
                         sent_batch, is_split_into_words=False, padding=True, truncation=True, return_tensors="pt"
                     )
-                hidden = self.emb_model(**inputs.to(self.device))["hidden_states"]
+
+                # with torch.autocast(device_type=self.device, dtype=torch.bfloat16 if self.device == 'cpu' else torch.float16):
+                #     hidden = self.emb_model(**inputs.to(self.device))["hidden_states"]
+                hidden = self._emb_model(**inputs.to(self.device))["hidden_states"]
                 if self.layer >= len(hidden):
                     raise ValueError(
                         f"Specified to take embeddings from layer {self.layer}, but model has only"
@@ -101,8 +139,12 @@ class SentenceAligner:
         ] = None,  # new: ["max", "avg"] type of average similarity for words from tokens
         device: str = "cpu",
         layer: int = 8,
+        lazy_loading: bool = True,
     ):
-        model_names = {"bert": "bert-base-multilingual-cased", "xlmr": "xlm-roberta-base"}
+        model_names = {
+            "bert": "bert-base-multilingual-cased",
+            "xlmr": "xlm-roberta-base"
+        }
         all_matching_methods = {"a": "inter", "m": "mwmf", "i": "itermax", "f": "fwd", "r": "rev"}
 
         self.model = model
@@ -112,9 +154,10 @@ class SentenceAligner:
         self.distortion = distortion
         self.matching_methods = [all_matching_methods[m] for m in matching_methods]
         self.return_similarity = return_similarity
-        self.device = torch.device(device)
+        self.device = device
+        self.lazy_loading = lazy_loading
 
-        self.embed_loader = EmbeddingLoader(model=self.model, device=self.device, layer=layer)
+        self.embed_loader = EmbeddingLoader(model=self.model, device=self.device, layer=layer, lazy_loading=lazy_loading)
 
     @staticmethod
     def get_max_weight_match(sim: np.ndarray) -> np.ndarray:
